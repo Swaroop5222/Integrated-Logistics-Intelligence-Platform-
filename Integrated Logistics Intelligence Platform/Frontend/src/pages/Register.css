@@ -1,0 +1,141 @@
+.register-container {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 20px;
+}
+
+.register-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.register-header {
+  margin-bottom: 24px;
+}
+
+.register-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 28px;
+}
+
+.register-header p {
+  color: var(--text);
+  font-size: 14px;
+  margin: 0;
+}
+
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.form-group.span-2 {
+  grid-column: span 2;
+}
+
+.form-group label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+.form-group input,
+.form-group select {
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg);
+  color: var(--text-h);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--accent);
+}
+
+.role-details-section {
+  margin-top: 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.section-title {
+  font-size: 16px;
+  margin: 0 0 12px 0;
+  font-weight: 600;
+  text-align: left;
+}
+
+.section-desc {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+  text-align: left;
+}
+
+.form-actions {
+  margin-top: 10px;
+}
+
+.btn-primary {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.register-footer {
+  text-align: center;
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+}
+
+.login-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.login-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 600px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .form-group.span-2 {
+    grid-column: span 1;
+  }
+}
