@@ -1,4 +1,5 @@
 import React from "react";
+import "./ShipmentDetailsPage.css";
 
 function ShipmentDetailsPage() {
   const shipment = {
@@ -27,63 +28,126 @@ function ShipmentDetailsPage() {
       "Chennai, Tamil Nadu, India - 600001",
   };
 
+  const timeline = [
+    { status: "Created", completed: true },
+    { status: "Picked Up", completed: true },
+    { status: "In Transit", completed: true },
+    { status: "Out for Delivery", completed: false },
+    { status: "Delivered", completed: false },
+  ];
+
   const handleBack = () => {
     window.history.back();
   };
 
   return (
-    <div>
-      <button onClick={handleBack}>
-        ← Back to Shipments
-      </button>
+    <div className="shipment-page">
 
-      <h1>Shipment Details</h1>
+      <div className="shipment-container">
 
-      <h2>{shipment.trackingNumber}</h2>
+        <button className="back-button" onClick={handleBack}>
+          ← Back to Shipments
+        </button>
 
-      <h3>Current Status</h3>
-      <p>{shipment.status}</p>
+        {/* Header */}
+        <div className="shipment-header">
+          <h1>Shipment Details</h1>
+          <p className="tracking-number">
+            {shipment.trackingNumber}
+          </p>
 
-      <hr />
+          <div className="status-section">
+            <span>Current Status</span>
+            <div className="status-badge">
+              {shipment.status}
+            </div>
+          </div>
+        </div>
 
-      <h3>Sender Information</h3>
-      <p><strong>Name:</strong> {shipment.sender.name}</p>
-      <p><strong>Phone:</strong> {shipment.sender.phone}</p>
-      <p><strong>Email:</strong> {shipment.sender.email}</p>
+        {/* Sender and Receiver */}
+        <div className="info-grid">
 
-      <hr />
+          <div className="info-card">
+            <h3>📤 Sender Information</h3>
+            <p>
+              <strong>Name:</strong> {shipment.sender.name}
+            </p>
+            <p>
+              <strong>Phone:</strong> {shipment.sender.phone}
+            </p>
+            <p>
+              <strong>Email:</strong> {shipment.sender.email}
+            </p>
+          </div>
 
-      <h3>Receiver Information</h3>
-      <p><strong>Name:</strong> {shipment.receiver.name}</p>
-      <p><strong>Phone:</strong> {shipment.receiver.phone}</p>
-      <p><strong>Email:</strong> {shipment.receiver.email}</p>
+          <div className="info-card">
+            <h3>📥 Receiver Information</h3>
+            <p>
+              <strong>Name:</strong> {shipment.receiver.name}
+            </p>
+            <p>
+              <strong>Phone:</strong> {shipment.receiver.phone}
+            </p>
+            <p>
+              <strong>Email:</strong> {shipment.receiver.email}
+            </p>
+          </div>
 
-      <hr />
+        </div>
 
-      <h3>Package Information</h3>
-      <p><strong>Type:</strong> {shipment.package.type}</p>
-      <p><strong>Weight:</strong> {shipment.package.weight}</p>
-      <p>
-        <strong>Dimensions:</strong>{" "}
-        {shipment.package.dimensions}
-      </p>
+        {/* Package */}
+        <div className="info-card">
+          <h3>📦 Package Information</h3>
 
-      <hr />
+          <div className="package-grid">
+            <p>
+              <strong>Type</strong>
+              <span>{shipment.package.type}</span>
+            </p>
 
-      <h3>Delivery Address</h3>
-      <p>{shipment.deliveryAddress}</p>
+            <p>
+              <strong>Weight</strong>
+              <span>{shipment.package.weight}</span>
+            </p>
 
-      <hr />
+            <p>
+              <strong>Dimensions</strong>
+              <span>{shipment.package.dimensions}</span>
+            </p>
+          </div>
+        </div>
 
-      <h3>Tracking Timeline</h3>
+        {/* Address */}
+        <div className="info-card">
+          <h3>📍 Delivery Address</h3>
+          <p>{shipment.deliveryAddress}</p>
+        </div>
 
-      <ul>
-        <li>● Created</li>
-        <li>● Picked Up</li>
-        <li>● In Transit</li>
-        <li>○ Out for Delivery</li>
-        <li>○ Delivered</li>
-      </ul>
+        {/* Timeline */}
+        <div className="timeline-card">
+          <h3>Tracking Timeline</h3>
+
+          <div className="timeline">
+            {timeline.map((item, index) => (
+              <div
+                className={`timeline-item ${
+                  item.completed ? "completed" : ""
+                }`}
+                key={index}
+              >
+                <div className="timeline-dot"></div>
+
+                <div className="timeline-content">
+                  {item.status}
+                </div>
+              </div>
+            ))}
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }
