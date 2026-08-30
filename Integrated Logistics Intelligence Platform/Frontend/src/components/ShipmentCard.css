@@ -1,0 +1,101 @@
+.shipment-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.shipment-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.shipment-card-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.shipment-card-header p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.shipment-status {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.shipment-status.status-in-transit {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.shipment-status.status-out-for-delivery {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.shipment-status.status-delivered {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.shipment-status.status-pending {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.shipment-status.status-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.shipment-status.status-unknown {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.shipment-card-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.shipment-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 14px;
+}
+
+.field-label {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.shipment-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 20px;
+  padding-top: 15px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+@media (max-width: 480px) {
+  .shipment-card-body {
+    grid-template-columns: 1fr;
+  }
+}
