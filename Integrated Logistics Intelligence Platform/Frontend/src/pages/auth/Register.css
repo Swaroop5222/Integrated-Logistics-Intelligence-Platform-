@@ -139,3 +139,30 @@
     grid-column: span 1;
   }
 }
+
+.error-text {
+  color: #dc3545;
+  font-size: 12px;
+  margin-top: 4px;
+  text-align: left;
+}
+
+.form-group input.error-input,
+.form-group select.error-input {
+  border-color: #dc3545;
+}
+
+.alert {
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+  text-align: left;
+  font-size: 14px;
+}
+
+.alert-danger {
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+

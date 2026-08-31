@@ -2,6 +2,7 @@ package com.shiptrack.security;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -18,9 +19,17 @@ public class JwtUtil {
 
         final int HOUR = 1000 * 60 * 60;
         final int MINUTE = 1000 * 60;
+
+        String role = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .map(auth -> auth.replace("ROLE_", ""))
+                .findFirst()
+                .orElse("CUSTOMER");
+
          return Jwts
                 .builder()
                 .subject(userDetails.getUsername())
+                .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + MINUTE * 5)) // 5 minutes
                  .signWith(SECRET_KEY, Jwts.SIG.HS256)
@@ -55,5 +64,15 @@ public class JwtUtil {
                 .parseSignedClaims(token)
                 .getPayload() // return whole data given while creation
                 .getSubject(); // getting only subject(username) while creation of token
+    }
+
+    public String extractRole(String token){
+        return Jwts
+                .parser()
+                .verifyWith(SECRET_KEY)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("role", String.class);
     }
 }
