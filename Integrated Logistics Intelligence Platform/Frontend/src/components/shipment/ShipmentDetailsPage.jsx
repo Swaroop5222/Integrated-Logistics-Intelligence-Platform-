@@ -1,155 +1,302 @@
-import React from "react";
-import "./ShipmentDetailsPage.css";
-
-function ShipmentDetailsPage() {
-  const shipment = {
-    trackingNumber: "TRK001",
-    status: "IN TRANSIT",
+function ShipmentDetailsPage({ shipment }) {
+  const defaultShipment = {
+    trackingNumber: 'TRK001',
+    status: 'IN TRANSIT',
 
     sender: {
-      name: "ABC Logistics",
-      phone: "+91 9876543210",
-      email: "sender@abclogistics.com",
+      name: 'ABC Logistics',
+      phone: '+91 9876543210',
+      email: 'sender@abclogistics.com',
     },
 
     receiver: {
-      name: "John Doe",
-      phone: "+91 9876543211",
-      email: "john@example.com",
+      name: 'John Doe',
+      phone: '+91 9876543211',
+      email: 'john@example.com',
     },
 
     package: {
-      type: "Electronics",
-      weight: "2.5 kg",
-      dimensions: "30 x 20 x 15 cm",
+      type: 'Electronics',
+      weight: '2.5 kg',
+      dimensions: '30 × 20 × 15 cm',
     },
 
-    deliveryAddress:
-      "Chennai, Tamil Nadu, India - 600001",
-  };
+    deliveryAddress: 'Chennai, Tamil Nadu, India - 600001',
 
-  const timeline = [
-    { status: "Created", completed: true },
-    { status: "Picked Up", completed: true },
-    { status: "In Transit", completed: true },
-    { status: "Out for Delivery", completed: false },
-    { status: "Delivered", completed: false },
-  ];
+    timeline: [
+      {
+        status: 'Created',
+        description: 'Shipment has been created.',
+        date: '30 Jun 2023, 10:00 AM',
+        completed: true,
+      },
+      {
+        status: 'Picked Up',
+        description: 'Shipment has been picked up.',
+        date: '30 Jun 2023, 12:30 PM',
+        completed: true,
+      },
+      {
+        status: 'In Transit',
+        description: 'Shipment is on the way.',
+        date: '01 Jul 2023, 08:45 AM',
+        completed: true,
+      },
+      {
+        status: 'Out for Delivery',
+        description: 'Shipment is out for delivery.',
+        date: '-',
+        completed: false,
+      },
+      {
+        status: 'Delivered',
+        description: 'Shipment will be delivered soon.',
+        date: '-',
+        completed: false,
+      },
+    ],
+  }
 
-  const handleBack = () => {
-    window.history.back();
-  };
+  const currentShipment = shipment || defaultShipment
 
   return (
-    <div className="shipment-page">
+    <div className="shipment-details-page">
 
-      <div className="shipment-container">
-
-        <button className="back-button" onClick={handleBack}>
+      {/* Top Navigation */}
+      <header className="details-navbar">
+        <button className="back-button">
           ← Back to Shipments
         </button>
 
-        {/* Header */}
-        <div className="shipment-header">
-          <h1>Shipment Details</h1>
-          <p className="tracking-number">
-            {shipment.trackingNumber}
-          </p>
+        <div className="user-section">
+          <span className="user-icon">♙</span>
+          <span>John Smith</span>
+          <span>⌄</span>
+        </div>
+      </header>
 
-          <div className="status-section">
-            <span>Current Status</span>
-            <div className="status-badge">
-              {shipment.status}
+      <main className="details-container">
+
+        {/* Shipment Header */}
+        <section className="shipment-hero">
+
+          <div className="hero-content">
+
+            <p className="small-title">
+              Shipment Details
+            </p>
+
+            <h1>
+              {currentShipment.trackingNumber}
+            </h1>
+
+            <div className="status-section">
+
+              <p>Current Status</p>
+
+              <span className="status-badge">
+                ● {currentShipment.status}
+              </span>
+
             </div>
+
+            <p className="last-updated">
+              Last Updated: Today, 10:30 AM
+            </p>
+
           </div>
+
+          <div className="truck-illustration">
+            🚚
+          </div>
+
+        </section>
+
+        {/* Sender + Receiver */}
+        <div className="people-grid">
+
+          {/* Sender */}
+          <section className="details-card">
+
+            <div className="card-title">
+              <span className="card-icon">♙</span>
+              <h2>Sender Information</h2>
+            </div>
+
+            <div className="info-item">
+              <span className="label">Name</span>
+              <span className="value">
+                {currentShipment.sender.name}
+              </span>
+            </div>
+
+            <div className="info-item">
+              <span className="label">Phone</span>
+              <span className="value">
+                {currentShipment.sender.phone}
+              </span>
+            </div>
+
+            <div className="info-item">
+              <span className="label">Email</span>
+              <span className="value">
+                {currentShipment.sender.email}
+              </span>
+            </div>
+
+          </section>
+
+          {/* Receiver */}
+          <section className="details-card">
+
+            <div className="card-title">
+              <span className="card-icon">♙</span>
+              <h2>Receiver Information</h2>
+            </div>
+
+            <div className="info-item">
+              <span className="label">Name</span>
+              <span className="value">
+                {currentShipment.receiver.name}
+              </span>
+            </div>
+
+            <div className="info-item">
+              <span className="label">Phone</span>
+              <span className="value">
+                {currentShipment.receiver.phone}
+              </span>
+            </div>
+
+            <div className="info-item">
+              <span className="label">Email</span>
+              <span className="value">
+                {currentShipment.receiver.email}
+              </span>
+            </div>
+
+          </section>
+
         </div>
 
-        {/* Sender and Receiver */}
-        <div className="info-grid">
+        {/* Package Information */}
+        <section className="details-card package-card">
 
-          <div className="info-card">
-            <h3>📤 Sender Information</h3>
-            <p>
-              <strong>Name:</strong> {shipment.sender.name}
-            </p>
-            <p>
-              <strong>Phone:</strong> {shipment.sender.phone}
-            </p>
-            <p>
-              <strong>Email:</strong> {shipment.sender.email}
-            </p>
+          <div className="card-title">
+            <span className="card-icon">📦</span>
+            <h2>Package Information</h2>
           </div>
-
-          <div className="info-card">
-            <h3>📥 Receiver Information</h3>
-            <p>
-              <strong>Name:</strong> {shipment.receiver.name}
-            </p>
-            <p>
-              <strong>Phone:</strong> {shipment.receiver.phone}
-            </p>
-            <p>
-              <strong>Email:</strong> {shipment.receiver.email}
-            </p>
-          </div>
-
-        </div>
-
-        {/* Package */}
-        <div className="info-card">
-          <h3>📦 Package Information</h3>
 
           <div className="package-grid">
-            <p>
-              <strong>Type</strong>
-              <span>{shipment.package.type}</span>
-            </p>
 
-            <p>
-              <strong>Weight</strong>
-              <span>{shipment.package.weight}</span>
-            </p>
+            <div>
+              <span className="label">Type</span>
+              <span className="package-value">
+                {currentShipment.package.type}
+              </span>
+            </div>
 
-            <p>
-              <strong>Dimensions</strong>
-              <span>{shipment.package.dimensions}</span>
-            </p>
+            <div>
+              <span className="label">Weight</span>
+              <span className="package-value">
+                {currentShipment.package.weight}
+              </span>
+            </div>
+
+            <div>
+              <span className="label">Dimensions</span>
+              <span className="package-value">
+                {currentShipment.package.dimensions}
+              </span>
+            </div>
+
           </div>
-        </div>
 
-        {/* Address */}
-        <div className="info-card">
-          <h3>📍 Delivery Address</h3>
-          <p>{shipment.deliveryAddress}</p>
-        </div>
+        </section>
 
-        {/* Timeline */}
-        <div className="timeline-card">
-          <h3>Tracking Timeline</h3>
+        {/* Delivery Address */}
+        <section className="details-card address-card">
 
-          <div className="timeline">
-            {timeline.map((item, index) => (
+          <div className="card-title">
+            <span className="card-icon">📍</span>
+            <h2>Delivery Address</h2>
+          </div>
+
+          <p className="address-text">
+            {currentShipment.deliveryAddress}
+          </p>
+
+        </section>
+
+        {/* Tracking Timeline */}
+        <section className="details-card timeline-card">
+
+          <div className="card-title">
+            <span className="card-icon">◷</span>
+            <h2>Tracking Timeline</h2>
+          </div>
+
+          <div className="tracking-timeline">
+
+            {currentShipment.timeline.map((item, index) => (
+
               <div
-                className={`timeline-item ${
-                  item.completed ? "completed" : ""
+                className={`timeline-row ${
+                  item.completed ? 'completed' : ''
                 }`}
-                key={index}
+                key={item.status}
               >
-                <div className="timeline-dot"></div>
+
+                <div className="timeline-marker">
+
+                  <div className="timeline-dot">
+                    {item.completed ? '✓' : ''}
+                  </div>
+
+                  {index <
+                    currentShipment.timeline.length - 1 && (
+                    <div className="timeline-connector"></div>
+                  )}
+
+                </div>
 
                 <div className="timeline-content">
-                  {item.status}
+
+                  <div className="timeline-top">
+
+                    <div>
+                      <h3>{item.status}</h3>
+
+                      <p>
+                        {item.description}
+                      </p>
+                    </div>
+
+                    <span className="timeline-date">
+                      {item.date}
+                    </span>
+
+                  </div>
+
                 </div>
+
               </div>
+
             ))}
+
           </div>
 
-        </div>
+          <div className="timezone-note">
+            <span>ⓘ</span>
+            All times shown are in local time zone.
+          </div>
 
-      </div>
+        </section>
+
+      </main>
 
     </div>
-  );
+  )
 }
 
-export default ShipmentDetailsPage;
+export default ShipmentDetailsPage
