@@ -39,15 +39,34 @@ public class SecurityConfig {
 //                auth.anyRequest().permitAll()
 //        ).build(); // allow all request
 
-        http.authorizeHttpRequests(auth ->
-                auth
-                        .requestMatchers("/auth/**").permitAll()
-.requestMatchers(HttpMethod.POST, "/api/users").permitAll()
-.requestMatchers("/api/users/**").authenticated() // dont allow this only
-                        .requestMatchers("/dashboard").permitAll() // permit specific endpoing only
-                        .anyRequest().permitAll() // allow all others url
+       http.authorizeHttpRequests(auth ->
+        auth
+                // Public endpoints
+                .requestMatchers("/auth/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
 
-                )
+
+
+                // Customer
+.requestMatchers("/api/customer/**").hasRole("CUSTOMER")
+
+// Business Client
+.requestMatchers("/api/business/**").hasRole("BUSINESS")
+
+// Logistics Operator
+.requestMatchers("/api/operator/**").hasRole("LOGISTIC_OPERATOR")
+
+// Support Agent
+.requestMatchers("/api/support/**").hasRole("SUPPORT_AGENT")
+
+                // Dashboard requires login
+                .requestMatchers("/dashboard").authenticated()
+
+                // Everything else requires authentication
+                .anyRequest().authenticated()
+) // allow all others url
+
+               // )
 //                .formLogin(form ->
 //                    form
 //                        .permitAll()// allow form page (blocked by above)
