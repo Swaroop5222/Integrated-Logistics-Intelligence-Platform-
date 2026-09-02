@@ -3,10 +3,13 @@ package com.shiptrack.controller;
 import com.shiptrack.model.RegistrationRequest;
 import com.shiptrack.model.User;
 import com.shiptrack.repository.UserRepository;
+import com.shiptrack.service.RoleIdGeneratorService;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,82 +24,63 @@ public class UserController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // =========================
-    // REGISTRATION
-    // =========================
+    @Autowired
+    private RoleIdGeneratorService roleIdGeneratorService;
 
+    // REGISTER USER
     @PostMapping
-    public ResponseEntity<?> createUser(@RequestBody RegistrationRequest request) {
+    @Transactional
+    public ResponseEntity<?> createUser(
+            @RequestBody RegistrationRequest request) {
 
-        // 1. Check password and confirm password
+        // Validate email
+        if (request.getEmail() == null ||
+                request.getEmail().isBlank()) {
+
+            return ResponseEntity.badRequest()
+                    .body("Email is required");
+        }
+
+        String email = request.getEmail().trim();
+
+        // Check duplicate email
+        if (userRepository.findByEmail(email).isPresent()) {
+            return ResponseEntity.badRequest()
+                    .body("Email already registered");
+        }
+
+        // Validate password
         if (request.getPassword() == null ||
-                !request.getPassword().equals(request.getConfirmPassword())) {
+                request.getPassword().isBlank()) {
+
+            return ResponseEntity.badRequest()
+                    .body("Password is required");
+        }
+
+        if (request.getConfirmPassword() == null ||
+                !request.getPassword()
+                        .equals(request.getConfirmPassword())) {
 
             return ResponseEntity.badRequest()
                     .body("Password and Confirm Password do not match");
         }
 
-        // 2. Check email already exists
-        if (request.getEmail() != null &&
-                userRepository.findByEmail(request.getEmail()).isPresent()) {
-
-            return ResponseEntity.badRequest()
-                    .body("Email already registered");
-        }
-
-        // 3. Create User entity
-        User user = new User();
-
-        // Common fields
-        user.setFirstName(request.getFirstName());
-        user.setLastName(request.getLastName());
-        user.setEmail(request.getEmail());
-        user.setMobileNumber(request.getMobileNumber());
-
-        // Password encryption
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-
-        // Address
-        user.setAddress(request.getAddress());
-        user.setCity(request.getCity());
-        user.setState(request.getState());
-        user.setCountry(request.getCountry());
-        user.setPostalCode(request.getPostalCode());
-
-        // Business fields
-        user.setCompanyName(request.getCompanyName());
-        user.setRegistrationNumber(request.getRegistrationNumber());
-        user.setGstTaxId(request.getGstTaxId());
-        user.setContactPersonName(request.getContactPersonName());
-
-        // Logistic Operator fields
-        user.setOrganizationName(request.getOrganizationName());
-        user.setLicenseRegistrationNumber(
-                request.getLicenseRegistrationNumber()
-        );
-        user.setTransportationMode(request.getTransportationMode());
-        user.setOperatingArea(request.getOperatingArea());
-
-        // Support Agent fields
-        user.setEmployeeId(request.getEmployeeId());
-        user.setDepartment(request.getDepartment());
-
-        // 4. Set role
+        // Determine role
         String role = request.getRole();
 
         if (role == null || role.isBlank()) {
             role = "CUSTOMER";
         }
 
-        role = role.toUpperCase();
+        role = role.trim().toUpperCase();
 
-        // Prevent normal users from creating ADMIN accounts
-        if (role.equals("ADMIN")) {
+        // Admin registration is not allowed
+        if ("ADMIN".equals(role)) {
             return ResponseEntity.badRequest()
                     .body("ADMIN registration is not allowed");
         }
 
-        // Allow only supported registration types
+        // Allow only supported registration roles
         if (!role.equals("CUSTOMER") &&
                 !role.equals("BUSINESS") &&
                 !role.equals("LOGISTIC_OPERATOR") &&
@@ -106,56 +90,136 @@ public class UserController {
                     .body("Invalid registration role");
         }
 
+        // Create User
+        User user = new User();
+
+        // Personal information
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
+
+        // Generate full name
+        String fullName;
+
+        if ("BUSINESS".equals(role)) {
+
+            fullName = request.getContactPersonName() == null
+                    ? ""
+                    : request.getContactPersonName().trim();
+
+            if (fullName.isBlank()) {
+                return ResponseEntity.badRequest()
+                        .body("Contact Person Name is required for business registration");
+            }
+
+        } else {
+
+            String firstName = request.getFirstName() == null
+                    ? ""
+                    : request.getFirstName().trim();
+
+            String lastName = request.getLastName() == null
+                    ? ""
+                    : request.getLastName().trim();
+
+            fullName = (firstName + " " + lastName).trim();
+
+            if (fullName.isBlank()) {
+                return ResponseEntity.badRequest()
+                        .body("First name or last name is required");
+            }
+        }
+
+        user.setFullName(fullName);
+
+        // Contact information
+        user.setEmail(email);
+        user.setMobileNumber(request.getMobileNumber());
+
+        // Username = email
+        user.setUsername(email);
+
+        // Password encryption
+        user.setPassword(
+                passwordEncoder.encode(request.getPassword())
+        );
+
+        // Address
+        user.setAddress(request.getAddress());
+        user.setCity(request.getCity());
+        user.setState(request.getState());
+        user.setCountry(request.getCountry());
+        user.setPostalCode(request.getPostalCode());
+
+        // Business information
+        user.setCompanyName(request.getCompanyName());
+        user.setRegistrationNumber(request.getRegistrationNumber());
+        user.setGstTaxId(request.getGstTaxId());
+        user.setContactPersonName(request.getContactPersonName());
+
+        // Logistic Operator information
+        user.setOrganizationName(request.getOrganizationName());
+        user.setLicenseRegistrationNumber(
+                request.getLicenseRegistrationNumber()
+        );
+        user.setTransportationMode(
+                request.getTransportationMode()
+        );
+        user.setOperatingArea(
+                request.getOperatingArea()
+        );
+
+        // Support Agent information
+        user.setEmployeeId(request.getEmployeeId());
+        user.setDepartment(request.getDepartment());
+
+        // Set role
         user.setRole(role);
 
-        // 5. Username = email
-        user.setUsername(request.getEmail());
+        // Generate role-specific ID
+        String roleSpecificId =
+                roleIdGeneratorService.generateId(role);
 
-        // 6. Save
+        user.setRoleSpecificId(roleSpecificId);
+
+        // Save user
         User savedUser = userRepository.save(user);
-
-        // 7. Don't return password
-        savedUser.setPassword(null);
 
         return ResponseEntity.ok(savedUser);
     }
 
-
-    // =========================
-    // READ ALL USERS
-    // =========================
-
+    // GET ALL USERS
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public List<User> getAllUsers() {
         return userRepository.findAll();
     }
 
-
-    // =========================
-    // READ USER BY ID
-    // =========================
-
+    // GET USER BY ID
     @GetMapping("/{id}")
-   @PreAuthorize("hasAnyRole('CUSTOMER', 'BUSINESS', 'LOGISTIC_OPERATOR', 'SUPPORT_AGENT')")
-    public ResponseEntity<User> getUserById(@PathVariable Long id) {
+    @PreAuthorize(
+            "hasAnyRole(" +
+                    "'CUSTOMER'," +
+                    "'BUSINESS'," +
+                    "'LOGISTIC_OPERATOR'," +
+                    "'SUPPORT_AGENT'," +
+                    "'ADMIN'" +
+                    ")"
+    )
+    public ResponseEntity<User> getUserById(
+            @PathVariable Long id) {
 
         return userRepository.findById(id)
-                .map(user -> {
-                    user.setPassword(null);
-                    return ResponseEntity.ok(user);
-                })
-                .orElse(ResponseEntity.notFound().build());
+                .map(user -> ResponseEntity.ok(user))
+                .orElse(
+                        ResponseEntity.notFound().build()
+                );
     }
 
-
-    // =========================
     // DELETE USER
-    // =========================
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteUser(
+            @PathVariable Long id) {
 
         if (!userRepository.existsById(id)) {
             return ResponseEntity.notFound().build();
