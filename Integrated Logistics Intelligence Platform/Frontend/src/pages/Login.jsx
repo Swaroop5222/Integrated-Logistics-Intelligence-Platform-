@@ -14,7 +14,9 @@ import { useState } from "react";
 
 import "./Login.css";
 
+
 function Login() {
+
   const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
@@ -25,53 +27,189 @@ function Login() {
     role: "",
   });
 
+
+  // =========================================================
+  // HANDLE INPUT
+  // =========================================================
+
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+
+    const { name, value } = e.target;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
   };
 
+
+  // =========================================================
+  // LOGIN
+  // =========================================================
+
   const handleSubmit = (e) => {
+
     e.preventDefault();
 
-    if (!formData.role) {
+
+    const email = formData.email.trim().toLowerCase();
+    const password = formData.password;
+    const role = formData.role;
+
+
+    // -----------------------------
+    // Role validation
+    // -----------------------------
+
+    if (!role) {
+
       alert("Please select your role.");
+
       return;
     }
 
-    const routes = {
-      customer: "/dashboard/customer",
-      business: "/dashboard/business",
-      operator: "/dashboard/operator",
-      support: "/dashboard/support",
-      admin: "/dashboard/admin",
+
+    // -----------------------------
+    // Get registered users
+    // -----------------------------
+
+    let registeredUsers = [];
+
+    try {
+
+      registeredUsers = JSON.parse(
+        localStorage.getItem("shiptrackUsers") || "[]"
+      );
+
+      if (!Array.isArray(registeredUsers)) {
+        registeredUsers = [];
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Unable to read registered users:",
+        error
+      );
+
+      registeredUsers = [];
+    }
+
+
+    // =========================================================
+    // FIND USER
+    // =========================================================
+
+    const user = registeredUsers.find(
+      (registeredUser) =>
+
+        registeredUser.email?.toLowerCase() === email &&
+
+        registeredUser.password === password &&
+
+        registeredUser.role === role
+    );
+
+
+    // -----------------------------
+    // Invalid credentials
+    // -----------------------------
+
+    if (!user) {
+
+      alert(
+        "Invalid email, password, or role. Please check your credentials."
+      );
+
+      return;
+    }
+
+
+    // =========================================================
+    // CREATE CURRENT SESSION
+    //
+    // Do NOT store password here.
+    // =========================================================
+
+    const currentUser = {
+
+      id: user.id,
+
+      firstName: user.firstName,
+
+      lastName: user.lastName,
+
+      name: user.name,
+
+      email: user.email,
+
+      mobile: user.mobile,
+
+      role: user.role,
+
     };
 
-    navigate(routes[formData.role]);
+
+    localStorage.setItem(
+      "shiptrackUser",
+      JSON.stringify(currentUser)
+    );
+
+
+    // =========================================================
+    // ROLE BASED NAVIGATION
+    // =========================================================
+
+    const routes = {
+
+      customer: "/dashboard/customer",
+
+      business: "/dashboard/business",
+
+      operator: "/dashboard/operator",
+
+      support: "/dashboard/support",
+
+      admin: "/dashboard/admin",
+
+    };
+
+
+    navigate(routes[user.role]);
+
   };
 
-  return (
-    <div className="auth-page">
 
-      {/* Background */}
+  return (
+
+    <div className="auth-page">
 
       <div className="auth-background"></div>
 
       <div className="auth-overlay"></div>
 
 
-      {/* Navbar */}
+      {/* =====================================================
+          NAVBAR
+      ===================================================== */}
 
       <header className="auth-navbar">
 
-        <Link to="/" className="auth-brand">
+        <Link
+          to="/"
+          className="auth-brand"
+        >
 
           <div className="auth-brand-icon">
+
             <Box size={20} />
+
           </div>
 
+
           <div>
+
             <strong>
               ShipTrack <span>Pro</span>
             </strong>
@@ -79,58 +217,85 @@ function Login() {
             <small>
               LOGISTICS INTELLIGENCE
             </small>
+
           </div>
 
         </Link>
 
 
-        <Link to="/" className="back-home">
+        <Link
+          to="/"
+          className="back-home"
+        >
           Back to Home
         </Link>
 
       </header>
 
 
-      {/* Main */}
+      {/* =====================================================
+          MAIN
+      ===================================================== */}
 
       <main className="auth-container">
 
-        {/* Left Information */}
+
+        {/* ===================================================
+            LEFT SIDE
+        =================================================== */}
 
         <section className="auth-info">
 
           <div className="auth-tag">
+
             <span></span>
+
             LOGISTICS CONTROL CENTER
+
           </div>
 
 
           <h1>
+
             Welcome
+
             <br />
+
             <span>back.</span>
+
           </h1>
 
 
           <p>
+
             Sign in to manage shipments, track deliveries
             and stay connected with your logistics operations.
+
           </p>
 
 
           <div className="auth-features">
 
+
             <div className="auth-feature">
 
               <div className="auth-feature-icon orange">
+
                 <Truck size={17} />
+
               </div>
 
+
               <div>
-                <strong>Live Shipment Tracking</strong>
+
+                <strong>
+                  Live Shipment Tracking
+                </strong>
+
                 <small>
                   Follow every shipment in real time.
                 </small>
+
               </div>
 
             </div>
@@ -139,14 +304,22 @@ function Login() {
             <div className="auth-feature">
 
               <div className="auth-feature-icon purple">
+
                 <ShieldCheck size={17} />
+
               </div>
 
+
               <div>
-                <strong>Secure Access</strong>
+
+                <strong>
+                  Secure Access
+                </strong>
+
                 <small>
                   Role-based access for every team.
                 </small>
+
               </div>
 
             </div>
@@ -156,34 +329,51 @@ function Login() {
         </section>
 
 
-        {/* Login Card */}
+        {/* ===================================================
+            LOGIN CARD
+        =================================================== */}
 
         <section className="auth-card">
+
 
           <div className="auth-card-header">
 
             <div className="auth-card-icon">
+
               <LockKeyhole size={20} />
+
             </div>
 
+
             <div>
-              <h2>Sign in</h2>
+
+              <h2>
+                Sign in
+              </h2>
 
               <p>
                 Access your ShipTrack Pro account
               </p>
+
             </div>
 
           </div>
 
 
+          {/* =================================================
+              FORM
+          ================================================= */}
+
           <form onSubmit={handleSubmit}>
 
-            {/* Email */}
+
+            {/* EMAIL */}
 
             <div className="auth-field">
 
-              <label>Email Address</label>
+              <label>
+                Email Address
+              </label>
 
               <div className="auth-input-wrapper">
 
@@ -203,11 +393,13 @@ function Login() {
             </div>
 
 
-            {/* Password */}
+            {/* PASSWORD */}
 
             <div className="auth-field">
 
-              <label>Password</label>
+              <label>
+                Password
+              </label>
 
               <div className="auth-input-wrapper">
 
@@ -226,6 +418,7 @@ function Login() {
                   required
                 />
 
+
                 <button
                   type="button"
                   className="password-toggle"
@@ -233,11 +426,13 @@ function Login() {
                     setShowPassword(!showPassword)
                   }
                 >
+
                   {showPassword ? (
                     <EyeOff size={17} />
                   ) : (
                     <Eye size={17} />
                   )}
+
                 </button>
 
               </div>
@@ -245,11 +440,13 @@ function Login() {
             </div>
 
 
-            {/* Role */}
+            {/* ROLE */}
 
             <div className="auth-field">
 
-              <label>Login As</label>
+              <label>
+                Login As
+              </label>
 
               <div className="auth-select-wrapper">
 
@@ -293,19 +490,22 @@ function Login() {
             </div>
 
 
-            {/* Remember */}
+            {/* OPTIONS */}
 
             <div className="auth-options">
 
               <label className="remember">
 
-                <input type="checkbox" />
+                <input
+                  type="checkbox"
+                />
 
                 <span>
                   Remember me
                 </span>
 
               </label>
+
 
               <button
                 type="button"
@@ -317,12 +517,13 @@ function Login() {
             </div>
 
 
-            {/* Submit */}
+            {/* SUBMIT */}
 
             <button
               type="submit"
               className="auth-submit"
             >
+
               Sign In
 
               <ArrowRight size={18} />
@@ -332,8 +533,16 @@ function Login() {
           </form>
 
 
+          {/* =================================================
+              REGISTER
+          ================================================= */}
+
           <div className="auth-divider">
-            <span>NEW TO SHIPTRACK PRO?</span>
+
+            <span>
+              NEW TO SHIPTRACK PRO?
+            </span>
+
           </div>
 
 
@@ -352,7 +561,10 @@ function Login() {
       </main>
 
     </div>
+
   );
+
 }
+
 
 export default Login;

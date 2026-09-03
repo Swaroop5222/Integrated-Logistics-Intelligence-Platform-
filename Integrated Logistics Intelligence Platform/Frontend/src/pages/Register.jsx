@@ -1,12 +1,15 @@
 import {
   ArrowRight,
   Box,
-  Building2,
-  CheckCircle2,
-  Headphones,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  Phone,
   ShieldCheck,
+  User,
+  UserPlus,
   Truck,
-  UserRound,
 } from "lucide-react";
 
 import { Link, useNavigate } from "react-router-dom";
@@ -14,8 +17,13 @@ import { useState } from "react";
 
 import "./Register.css";
 
+
 function Register() {
+
   const navigate = useNavigate();
+
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -27,56 +35,237 @@ function Register() {
     role: "",
   });
 
+
+  // =========================================================
+  // HANDLE INPUT
+  // =========================================================
+
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+
+    const { name, value } = e.target;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
   };
+
+
+  // =========================================================
+  // REGISTER
+  // =========================================================
 
   const handleSubmit = (e) => {
+
     e.preventDefault();
 
-    if (formData.password !== formData.confirmPassword) {
+
+    const firstName = formData.firstName.trim();
+    const lastName = formData.lastName.trim();
+    const email = formData.email.trim().toLowerCase();
+    const mobile = formData.mobile.trim();
+    const password = formData.password;
+    const confirmPassword = formData.confirmPassword;
+    const role = formData.role;
+
+
+    // -----------------------------
+    // Validate names
+    // -----------------------------
+
+    if (!firstName || !lastName) {
+
+      alert("Please enter your first name and last name.");
+
+      return;
+    }
+
+
+    // -----------------------------
+    // Validate password
+    // -----------------------------
+
+    if (password.length < 6) {
+
+      alert("Password must contain at least 6 characters.");
+
+      return;
+    }
+
+
+    // -----------------------------
+    // Confirm password
+    // -----------------------------
+
+    if (password !== confirmPassword) {
+
       alert("Passwords do not match.");
+
       return;
     }
 
-    if (!formData.role) {
-      alert("Please select a role.");
+
+    // -----------------------------
+    // Validate role
+    // -----------------------------
+
+    if (!role) {
+
+      alert("Please select your role.");
+
       return;
     }
 
-    const routes = {
-      customer: "/dashboard/customer",
-      business: "/dashboard/business",
-      operator: "/dashboard/operator",
-      support: "/dashboard/support",
-      admin: "/dashboard/admin",
+
+    // -----------------------------
+    // Get registered users
+    // -----------------------------
+
+    let registeredUsers = [];
+
+    try {
+
+      registeredUsers = JSON.parse(
+        localStorage.getItem("shiptrackUsers") || "[]"
+      );
+
+      if (!Array.isArray(registeredUsers)) {
+        registeredUsers = [];
+      }
+
+    } catch (error) {
+
+      console.error(
+        "Unable to read registered users:",
+        error
+      );
+
+      registeredUsers = [];
+    }
+
+
+    // -----------------------------
+    // Check duplicate email
+    // -----------------------------
+
+    const existingUser = registeredUsers.find(
+      (user) =>
+        user.email?.toLowerCase() === email
+    );
+
+
+    if (existingUser) {
+
+      alert(
+        "An account with this email already exists. Please login."
+      );
+
+      navigate("/login");
+
+      return;
+    }
+
+
+    // =========================================================
+    // CREATE USER
+    // =========================================================
+
+    const newUser = {
+
+      id: Date.now().toString(),
+
+      firstName,
+
+      lastName,
+
+      name: `${firstName} ${lastName}`,
+
+      email,
+
+      mobile,
+
+      password,
+
+      role,
+
     };
 
-    navigate(routes[formData.role]);
+
+    // -----------------------------
+    // Save registered user
+    // -----------------------------
+
+    const updatedUsers = [
+      ...registeredUsers,
+      newUser,
+    ];
+
+
+    localStorage.setItem(
+      "shiptrackUsers",
+      JSON.stringify(updatedUsers)
+    );
+
+
+    // =========================================================
+    // IMPORTANT
+    //
+    // Registration does NOT mean login.
+    //
+    // Remove any old logged-in user.
+    // =========================================================
+
+    localStorage.removeItem("shiptrackUser");
+
+
+    // -----------------------------
+    // Success
+    // -----------------------------
+
+    alert(
+      "Registration successful! Please login to continue."
+    );
+
+
+    // -----------------------------
+    // Go ONLY to login
+    // -----------------------------
+
+    navigate("/login");
+
   };
 
+
   return (
-    <div className="register-page">
 
-      <div className="register-background"></div>
+    <div className="auth-page">
 
-      <div className="register-overlay"></div>
+      <div className="auth-background"></div>
+
+      <div className="auth-overlay"></div>
 
 
-      {/* NAVBAR */}
+      {/* =====================================================
+          NAVBAR
+      ===================================================== */}
 
-      <header className="register-navbar">
+      <header className="auth-navbar">
 
-        <Link to="/" className="register-brand">
+        <Link
+          to="/"
+          className="auth-brand"
+        >
 
-          <div className="register-brand-icon">
+          <div className="auth-brand-icon">
+
             <Box size={20} />
+
           </div>
 
+
           <div>
+
             <strong>
               ShipTrack <span>Pro</span>
             </strong>
@@ -84,111 +273,114 @@ function Register() {
             <small>
               LOGISTICS INTELLIGENCE
             </small>
+
           </div>
 
         </Link>
 
 
-        <div className="register-login-link">
-
-          Already have an account?
-
-          <Link to="/login">
-            Sign in
-          </Link>
-
-        </div>
+        <Link
+          to="/"
+          className="back-home"
+        >
+          Back to Home
+        </Link>
 
       </header>
 
 
-      {/* MAIN */}
+      {/* =====================================================
+          MAIN
+      ===================================================== */}
 
-      <main className="register-container">
+      <main className="auth-container">
 
-        {/* LEFT */}
 
-        <section className="register-info">
+        {/* ===================================================
+            LEFT SIDE
+        =================================================== */}
 
-          <div className="register-tag">
+        <section className="auth-info">
+
+          <div className="auth-tag">
+
             <span></span>
+
             JOIN THE LOGISTICS NETWORK
+
           </div>
 
 
           <h1>
-            Move your
+
+            Create your
+
             <br />
-            <span>business forward.</span>
+
+            <span>account.</span>
+
           </h1>
 
 
           <p>
-            Create your ShipTrack Pro account and get
-            complete visibility across your shipments,
-            deliveries and logistics operations.
+
+            Join ShipTrack Pro to manage shipments,
+            monitor deliveries and stay connected
+            with your logistics operations.
+
           </p>
 
 
-          <div className="register-benefits">
-
-            <div>
-
-              <CheckCircle2 size={16} />
-
-              <span>
-                Real-time shipment visibility
-              </span>
-
-            </div>
+          <div className="auth-features">
 
 
-            <div>
+            <div className="auth-feature">
 
-              <CheckCircle2 size={16} />
+              <div className="auth-feature-icon orange">
 
-              <span>
-                Role-based logistics dashboard
-              </span>
+                <Truck size={17} />
 
-            </div>
+              </div>
 
 
-            <div>
+              <div>
 
-              <CheckCircle2 size={16} />
+                <strong>
+                  Smart Shipment Management
+                </strong>
 
-              <span>
-                Complete delivery lifecycle
-              </span>
+                <small>
+                  Manage your logistics operations
+                  from one place.
+                </small>
+
+              </div>
 
             </div>
 
-          </div>
+
+            <div className="auth-feature">
+
+              <div className="auth-feature-icon purple">
+
+                <ShieldCheck size={17} />
+
+              </div>
 
 
-          {/* Mini Role Cards */}
+              <div>
 
-          <div className="role-preview">
+                <strong>
+                  Role-Based Access
+                </strong>
 
-            <div>
-              <UserRound size={15} />
-              <span>Customer</span>
-            </div>
+                <small>
+                  Get access to features based
+                  on your role.
+                </small>
 
-            <div>
-              <Building2 size={15} />
-              <span>Business</span>
-            </div>
+              </div>
 
-            <div>
-              <Truck size={15} />
-              <span>Operator</span>
-            </div>
-
-            <div>
-              <Headphones size={15} />
-              <span>Support</span>
             </div>
 
           </div>
@@ -196,22 +388,30 @@ function Register() {
         </section>
 
 
-        {/* FORM */}
+        {/* ===================================================
+            REGISTER CARD
+        =================================================== */}
 
-        <section className="register-card">
+        <section className="auth-card">
 
-          <div className="register-card-header">
 
-            <div className="register-card-icon">
-              <UserRound size={20} />
+          <div className="auth-card-header">
+
+            <div className="auth-card-icon">
+
+              <UserPlus size={20} />
+
             </div>
+
 
             <div>
 
-              <h2>Create account</h2>
+              <h2>
+                Create account
+              </h2>
 
               <p>
-                Start managing your logistics today
+                Register your ShipTrack Pro account
               </p>
 
             </div>
@@ -219,53 +419,85 @@ function Register() {
           </div>
 
 
+          {/* =================================================
+              FORM
+          ================================================= */}
+
           <form onSubmit={handleSubmit}>
 
-            {/* NAME */}
 
-            <div className="register-grid">
+            {/* FIRST + LAST NAME */}
 
-              <div className="register-field">
+            <div
+              className="auth-row"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "14px",
+              }}
+            >
 
-                <label>First Name</label>
+              <div className="auth-field">
 
-                <input
-                  type="text"
-                  name="firstName"
-                  placeholder="First name"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  required
-                />
+                <label>
+                  First Name
+                </label>
+
+                <div className="auth-input-wrapper">
+
+                  <User size={17} />
+
+                  <input
+                    type="text"
+                    name="firstName"
+                    placeholder="First name"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    required
+                  />
+
+                </div>
 
               </div>
 
 
-              <div className="register-field">
+              <div className="auth-field">
 
-                <label>Last Name</label>
+                <label>
+                  Last Name
+                </label>
 
-                <input
-                  type="text"
-                  name="lastName"
-                  placeholder="Last name"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  required
-                />
+                <div className="auth-input-wrapper">
+
+                  <User size={17} />
+
+                  <input
+                    type="text"
+                    name="lastName"
+                    placeholder="Last name"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    required
+                  />
+
+                </div>
 
               </div>
 
             </div>
 
 
-            {/* EMAIL MOBILE */}
+            {/* EMAIL */}
 
-            <div className="register-grid">
+            <div className="auth-field">
 
-              <div className="register-field">
+              <label>
+                Email Address
+              </label>
 
-                <label>Email Address</label>
+              <div className="auth-input-wrapper">
+
+                <Mail size={17} />
 
                 <input
                   type="email"
@@ -278,15 +510,25 @@ function Register() {
 
               </div>
 
+            </div>
 
-              <div className="register-field">
 
-                <label>Mobile Number</label>
+            {/* MOBILE */}
+
+            <div className="auth-field">
+
+              <label>
+                Mobile Number
+              </label>
+
+              <div className="auth-input-wrapper">
+
+                <Phone size={17} />
 
                 <input
                   type="tel"
                   name="mobile"
-                  placeholder="+91 XXXXX XXXXX"
+                  placeholder="Enter mobile number"
                   value={formData.mobile}
                   onChange={handleChange}
                   required
@@ -299,36 +541,94 @@ function Register() {
 
             {/* PASSWORD */}
 
-            <div className="register-grid">
+            <div className="auth-field">
 
-              <div className="register-field">
+              <label>
+                Password
+              </label>
 
-                <label>Password</label>
+              <div className="auth-input-wrapper">
+
+                <LockKeyhole size={17} />
 
                 <input
-                  type="password"
+                  type={
+                    showPassword
+                      ? "text"
+                      : "password"
+                  }
                   name="password"
-                  placeholder="Create password"
+                  placeholder="Create a password"
                   value={formData.password}
                   onChange={handleChange}
                   required
                 />
 
+
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() =>
+                    setShowPassword(!showPassword)
+                  }
+                >
+
+                  {showPassword ? (
+                    <EyeOff size={17} />
+                  ) : (
+                    <Eye size={17} />
+                  )}
+
+                </button>
+
               </div>
 
+            </div>
 
-              <div className="register-field">
 
-                <label>Confirm Password</label>
+            {/* CONFIRM PASSWORD */}
+
+            <div className="auth-field">
+
+              <label>
+                Confirm Password
+              </label>
+
+              <div className="auth-input-wrapper">
+
+                <LockKeyhole size={17} />
 
                 <input
-                  type="password"
+                  type={
+                    showConfirmPassword
+                      ? "text"
+                      : "password"
+                  }
                   name="confirmPassword"
-                  placeholder="Confirm password"
+                  placeholder="Confirm your password"
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   required
                 />
+
+
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() =>
+                    setShowConfirmPassword(
+                      !showConfirmPassword
+                    )
+                  }
+                >
+
+                  {showConfirmPassword ? (
+                    <EyeOff size={17} />
+                  ) : (
+                    <Eye size={17} />
+                  )}
+
+                </button>
 
               </div>
 
@@ -337,11 +637,13 @@ function Register() {
 
             {/* ROLE */}
 
-            <div className="register-field">
+            <div className="auth-field">
 
-              <label>Choose Your Role</label>
+              <label>
+                Register As
+              </label>
 
-              <div className="register-role-wrapper">
+              <div className="auth-select-wrapper">
 
                 <ShieldCheck size={17} />
 
@@ -385,7 +687,15 @@ function Register() {
 
             {/* TERMS */}
 
-            <label className="register-terms">
+            <label
+              className="remember"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                marginBottom: "18px",
+              }}
+            >
 
               <input
                 type="checkbox"
@@ -393,18 +703,17 @@ function Register() {
               />
 
               <span>
-                I agree to the platform terms and
-                privacy policy.
+                I agree to the terms and conditions
               </span>
 
             </label>
 
 
-            {/* BUTTON */}
+            {/* SUBMIT */}
 
             <button
               type="submit"
-              className="register-submit"
+              className="auth-submit"
             >
 
               Create Account
@@ -416,28 +725,37 @@ function Register() {
           </form>
 
 
-          <div className="register-divider">
-            SECURE ROLE-BASED PLATFORM
-          </div>
+          {/* =================================================
+              LOGIN
+          ================================================= */}
 
-
-          <div className="register-security">
-
-            <ShieldCheck size={15} />
+          <div className="auth-divider">
 
             <span>
-              Your account is protected with
-              secure role-based access.
+              ALREADY HAVE AN ACCOUNT?
             </span>
 
           </div>
+
+
+          <p className="auth-switch">
+
+            Already registered?
+
+            <Link to="/login">
+              Sign in
+            </Link>
+
+          </p>
 
         </section>
 
       </main>
 
     </div>
+
   );
 }
+
 
 export default Register;

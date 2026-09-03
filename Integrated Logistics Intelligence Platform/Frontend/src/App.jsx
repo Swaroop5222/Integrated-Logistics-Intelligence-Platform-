@@ -1,24 +1,30 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import "./App.css";
+
+// =========================================================
+// PUBLIC PAGES
+// =========================================================
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
-// Dashboards
-import CustomerDashboard from "./pages/dashboards/CustomerDashboard";
-import BusinessDashboard from "./pages/dashboards/BusinessDashboard";
-import OperatorDashboard from "./pages/dashboards/OperatorDashboard";
-import SupportDashboard from "./pages/dashboards/SupportDashboard";
-import AdminDashboard from "./pages/dashboards/AdminDashboard";
+// =========================================================
+// CUSTOMER
+// =========================================================
 
-// Customer Pages
+import CustomerDashboard from "./pages/dashboards/CustomerDashboard";
 import ActiveShipments from "./pages/ActiveShipments";
 import ShipmentHistory from "./pages/ShipmentHistory";
 import Tracking from "./pages/Tracking";
 import Notifications from "./pages/Notifications";
 import TrackingInsights from "./pages/TrackingInsights";
 
-// Business Client Pages
+// =========================================================
+// BUSINESS CLIENT
+// =========================================================
+
+import BusinessDashboard from "./pages/dashboards/BusinessDashboard";
 import CreateShipment from "./pages/CreateShipment";
 import ShipmentManagement from "./pages/ShipmentManagement";
 import BusinessShipmentHistory from "./pages/BusinessShipmentHistory";
@@ -30,25 +36,61 @@ import LogisticsOverview from "./pages/LogisticsOverview";
 import CustomerActivity from "./pages/CustomerActivity";
 import Reports from "./pages/Reports";
 import BusinessNotifications from "./pages/BusinessNotifications";
-
-// Temporary Business Module
 import BusinessModule from "./pages/BusinessModule";
 
-import "./App.css";
+// =========================================================
+// LOGISTICS OPERATOR
+// =========================================================
+
+import OperatorDashboard from "./pages/dashboards/OperatorDashboard";
+import OperatorShipmentTracking from "./pages/OperatorShipmentTracking";
+import OperatorLiveDelivery from "./pages/OperatorLiveDelivery";
+import DriverTracking from "./pages/DriverTracking";
+import OperatorRouteManagement from "./pages/OperatorRouteManagement";
+import OperatorETADelays from "./pages/OperatorETADelays";
+import OperatorProofOfDelivery from "./pages/OperatorProofOfDelivery";
+
+// =========================================================
+// SUPPORT AGENT
+// =========================================================
+
+import SupportDashboard from "./pages/dashboards/SupportDashboard";
+
+// =========================================================
+// ADMINISTRATOR
+// =========================================================
+
+import AdminDashboard from "./pages/dashboards/AdminDashboard";
 
 function App() {
   return (
     <BrowserRouter>
+
       <Routes>
 
-        {/* ================= COMMON ================= */}
+        {/* =================================================
+            PUBLIC ROUTES
+        ================================================= */}
 
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route
+          path="/"
+          element={<Home />}
+        />
+
+        <Route
+          path="/login"
+          element={<Login />}
+        />
+
+        <Route
+          path="/register"
+          element={<Register />}
+        />
 
 
-        {/* ================= CUSTOMER ================= */}
+        {/* =================================================
+            CUSTOMER ROUTES
+        ================================================= */}
 
         <Route
           path="/dashboard/customer"
@@ -81,7 +123,9 @@ function App() {
         />
 
 
-        {/* ================= BUSINESS CLIENT ================= */}
+        {/* =================================================
+            BUSINESS CLIENT ROUTES
+        ================================================= */}
 
         <Route
           path="/dashboard/business"
@@ -143,24 +187,55 @@ function App() {
           element={<BusinessNotifications />}
         />
 
-
-        {/* ================= TEMPORARY BUSINESS MODULE ================= */}
-
         <Route
           path="/business/module"
           element={<BusinessModule />}
         />
 
 
-        {/* ================= LOGISTICS OPERATOR ================= */}
+        {/* =================================================
+            LOGISTICS OPERATOR ROUTES
+        ================================================= */}
 
         <Route
           path="/dashboard/operator"
           element={<OperatorDashboard />}
         />
 
+        <Route
+          path="/operator/shipment-tracking"
+          element={<OperatorShipmentTracking />}
+        />
 
-        {/* ================= SUPPORT AGENT ================= */}
+        <Route
+          path="/operator/live-delivery"
+          element={<OperatorLiveDelivery />}
+        />
+
+        <Route
+          path="/operator/driver-tracking"
+          element={<DriverTracking />}
+        />
+
+        <Route
+          path="/operator/routes"
+          element={<OperatorRouteManagement />}
+        />
+
+        <Route
+          path="/operator/eta-delay"
+          element={<OperatorETADelays />}
+        />
+
+        <Route
+          path="/operator/pod"
+          element={<OperatorProofOfDelivery />}
+        />
+
+
+        {/* =================================================
+            SUPPORT AGENT ROUTES
+        ================================================= */}
 
         <Route
           path="/dashboard/support"
@@ -168,7 +243,9 @@ function App() {
         />
 
 
-        {/* ================= ADMINISTRATOR ================= */}
+        {/* =================================================
+            ADMINISTRATOR ROUTES
+        ================================================= */}
 
         <Route
           path="/dashboard/admin"
@@ -176,7 +253,9 @@ function App() {
         />
 
 
-        {/* ================= FALLBACK ================= */}
+        {/* =================================================
+            FALLBACK
+        ================================================= */}
 
         <Route
           path="*"
@@ -184,6 +263,7 @@ function App() {
         />
 
       </Routes>
+
     </BrowserRouter>
   );
 }

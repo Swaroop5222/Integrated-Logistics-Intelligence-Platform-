@@ -1,6 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
+
 import "./CustomerDashboard.css";
+
+
+// =========================================================
+// DEMO SHIPMENT DATA
+// =========================================================
 
 const shipments = [
   {
@@ -33,30 +39,118 @@ const shipments = [
   },
 ];
 
+
+// =========================================================
+// CUSTOMER DASHBOARD
+// =========================================================
+
 function CustomerDashboard() {
+
+  // =======================================================
+  // GET CURRENT LOGGED-IN USER
+  // =======================================================
+
+  const savedUser = localStorage.getItem("shiptrackUser");
+
+  let loggedInUser = {};
+
+  try {
+    loggedInUser = savedUser
+      ? JSON.parse(savedUser)
+      : {};
+  } catch (error) {
+    console.error(
+      "Unable to read logged-in user:",
+      error
+    );
+
+    loggedInUser = {};
+  }
+
+
+  // =======================================================
+  // USER NAME
+  // =======================================================
+
+  const fullName =
+    loggedInUser.name ||
+    `${loggedInUser.firstName || ""} ${
+      loggedInUser.lastName || ""
+    }`.trim() ||
+    loggedInUser.email?.split("@")[0] ||
+    "Customer";
+
+
+  // =======================================================
+  // FIRST NAME
+  // =======================================================
+
+  const firstName =
+    loggedInUser.firstName ||
+    fullName
+      .split(/[\s._]+/)
+      .filter(Boolean)[0] ||
+    "Customer";
+
+
+  // =======================================================
+  // AVATAR LETTER
+  // =======================================================
+
+  const avatarLetter =
+    firstName.charAt(0).toUpperCase() ||
+    "C";
+
+
+  // =======================================================
+  // USER ROLE
+  // =======================================================
+
+  const userRole =
+    loggedInUser.role === "customer"
+      ? "Customer"
+      : loggedInUser.role || "Customer";
+
+
   return (
     <div className="customer-dashboard">
 
-      {/* ================= SIDEBAR ================= */}
+
+      {/* ===================================================
+          SIDEBAR
+      =================================================== */}
 
       <aside className="customer-sidebar">
 
-        {/* BRAND */}
+
+        {/* =================================================
+            BRAND
+        ================================================= */}
 
         <div className="customer-brand">
-          <div className="brand-icon">◇</div>
+
+          <div className="brand-icon">
+            ◇
+          </div>
 
           <div>
+
             <h2>
               ShipTrack <span>Pro</span>
             </h2>
 
-            <p>LOGISTICS INTELLIGENCE</p>
+            <p>
+              LOGISTICS INTELLIGENCE
+            </p>
+
           </div>
+
         </div>
 
 
-        {/* MAIN MENU */}
+        {/* =================================================
+            MAIN MENU
+        ================================================= */}
 
         <div className="sidebar-section">
 
@@ -65,94 +159,142 @@ function CustomerDashboard() {
           </p>
 
 
-          {/* OVERVIEW */}
+          {/* =================================================
+              OVERVIEW
+          ================================================= */}
 
           <Link
             to="/dashboard/customer"
             className="sidebar-link active"
           >
-            <span>⌂</span>
+
+            <span>
+              ⌂
+            </span>
+
             Overview
+
           </Link>
 
 
-          {/* ACTIVE SHIPMENTS */}
+          {/* =================================================
+              ACTIVE SHIPMENTS
+          ================================================= */}
 
           <Link
             to="/shipments/active"
             className="sidebar-link"
           >
-            <span>▣</span>
+
+            <span>
+              ▣
+            </span>
+
             Active Shipments
+
           </Link>
 
 
-          {/* SHIPMENT HISTORY */}
+          {/* =================================================
+              SHIPMENT HISTORY
+          ================================================= */}
 
           <Link
             to="/shipments/history"
             className="sidebar-link"
           >
-            <span>◫</span>
+
+            <span>
+              ◫
+            </span>
+
             Shipment History
+
           </Link>
 
 
-          {/* TRACKING */}
+          {/* =================================================
+              TRACKING
+          ================================================= */}
 
           <Link
             to="/tracking"
             className="sidebar-link"
           >
-            <span>◎</span>
+
+            <span>
+              ◎
+            </span>
+
             Tracking
+
           </Link>
 
 
-          {/* NOTIFICATIONS */}
+          {/* =================================================
+              NOTIFICATIONS
+          ================================================= */}
 
           <Link
             to="/notifications"
             className="sidebar-link"
           >
-            <span>◉</span>
+
+            <span>
+              ◉
+            </span>
 
             Notifications
 
             <b className="notification-count">
               3
             </b>
+
           </Link>
 
 
-          {/* TRACKING INSIGHTS */}
+          {/* =================================================
+              TRACKING INSIGHTS
+          ================================================= */}
 
           <Link
             to="/tracking-insights"
             className="sidebar-link"
           >
-            <span>⌁</span>
+
+            <span>
+              ⌁
+            </span>
+
             Tracking Insights
+
           </Link>
 
         </div>
 
 
-        {/* SIDEBAR BOTTOM */}
+        {/* =================================================
+            SIDEBAR BOTTOM
+        ================================================= */}
 
         <div className="sidebar-bottom">
 
-          {/* HELP */}
+
+          {/* =================================================
+              HELP
+          ================================================= */}
 
           <Link
             to="/notifications"
             className="help-card"
           >
+
             <div className="help-icon">
               ?
             </div>
 
             <div>
+
               <strong>
                 Need help?
               </strong>
@@ -160,18 +302,34 @@ function CustomerDashboard() {
               <p>
                 We're here for you.
               </p>
+
             </div>
+
           </Link>
 
 
-          {/* LOGOUT */}
+          {/* =================================================
+              LOGOUT
+          ================================================= */}
 
           <Link
             to="/login"
             className="logout-button"
+            onClick={() => {
+
+              localStorage.removeItem(
+                "shiptrackUser"
+              );
+
+            }}
           >
-            <span>↪</span>
+
+            <span>
+              ↪
+            </span>
+
             Logout
+
           </Link>
 
         </div>
@@ -179,14 +337,23 @@ function CustomerDashboard() {
       </aside>
 
 
-      {/* ================= MAIN CONTENT ================= */}
+      {/* ===================================================
+          MAIN CONTENT
+      =================================================== */}
 
       <main className="customer-main">
 
 
-        {/* ================= TOP BAR ================= */}
+        {/* =================================================
+            TOP BAR
+        ================================================= */}
 
         <header className="customer-topbar">
+
+
+          {/* =================================================
+              WELCOME
+          ================================================= */}
 
           <div>
 
@@ -195,7 +362,7 @@ function CustomerDashboard() {
             </p>
 
             <h1>
-              Good afternoon, Rekha
+              Good afternoon, {firstName}
             </h1>
 
             <p className="welcome-text">
@@ -205,38 +372,59 @@ function CustomerDashboard() {
           </div>
 
 
+          {/* =================================================
+              TOP BAR ACTIONS
+          ================================================= */}
+
           <div className="topbar-actions">
 
-            {/* NOTIFICATION BUTTON */}
+
+            {/* =================================================
+                NOTIFICATION
+            ================================================= */}
 
             <Link
               to="/notifications"
               className="top-icon"
             >
+
               🔔
+
               <span className="red-dot"></span>
+
             </Link>
 
 
-            {/* PROFILE */}
+            {/* =================================================
+                PROFILE
+            ================================================= */}
 
             <div className="profile">
 
+
+              {/* AVATAR */}
+
               <div className="profile-avatar">
-                R
+                {avatarLetter}
               </div>
+
+
+              {/* USER INFORMATION */}
 
               <div className="profile-info">
 
                 <strong>
-                  Rekha Patil
+                  {fullName}
                 </strong>
 
                 <span>
-                  Customer
+                  {userRole}
                 </span>
 
               </div>
+
+
+              {/* ARROW */}
 
               <span className="profile-arrow">
                 ⌄
@@ -249,12 +437,16 @@ function CustomerDashboard() {
         </header>
 
 
-        {/* ================= STAT CARDS ================= */}
+        {/* =================================================
+            STAT CARDS
+        ================================================= */}
 
         <section className="stats-grid">
 
 
-          {/* ACTIVE */}
+          {/* =================================================
+              ACTIVE SHIPMENTS
+          ================================================= */}
 
           <Link
             to="/shipments/active"
@@ -278,17 +470,21 @@ function CustomerDashboard() {
             </h2>
 
             <p>
+
               <span className="positive">
                 ↑ 12%
               </span>
 
               compared to last month
+
             </p>
 
           </Link>
 
 
-          {/* IN TRANSIT */}
+          {/* =================================================
+              IN TRANSIT
+          ================================================= */}
 
           <Link
             to="/tracking"
@@ -312,17 +508,21 @@ function CustomerDashboard() {
             </h2>
 
             <p>
+
               <span className="positive">
                 ●
               </span>
 
               Currently moving
+
             </p>
 
           </Link>
 
 
-          {/* DELIVERED */}
+          {/* =================================================
+              DELIVERED
+          ================================================= */}
 
           <Link
             to="/shipments/history"
@@ -346,17 +546,21 @@ function CustomerDashboard() {
             </h2>
 
             <p>
+
               <span className="positive">
                 ↑ 8%
               </span>
 
               successful deliveries
+
             </p>
 
           </Link>
 
 
-          {/* NOTIFICATIONS */}
+          {/* =================================================
+              NOTIFICATIONS
+          ================================================= */}
 
           <Link
             to="/notifications"
@@ -388,12 +592,16 @@ function CustomerDashboard() {
         </section>
 
 
-        {/* ================= CONTENT GRID ================= */}
+        {/* =================================================
+            CONTENT GRID
+        ================================================= */}
 
         <section className="dashboard-content">
 
 
-          {/* ================= RECENT SHIPMENTS ================= */}
+          {/* =================================================
+              RECENT SHIPMENTS
+          ================================================= */}
 
           <div className="panel shipments-panel">
 
@@ -511,7 +719,9 @@ function CustomerDashboard() {
           </div>
 
 
-          {/* ================= TRACKING INSIGHTS ================= */}
+          {/* =================================================
+              TRACKING INSIGHTS
+          ================================================= */}
 
           <div className="panel insights-panel">
 
@@ -529,18 +739,24 @@ function CustomerDashboard() {
 
               </div>
 
+
               <Link
                 to="/tracking-insights"
                 className="live-badge"
               >
+
                 <i></i>
+
                 LIVE
+
               </Link>
 
             </div>
 
 
-            {/* ROUTE */}
+            {/* =================================================
+                ROUTE
+            ================================================= */}
 
             <div className="insight-route">
 
@@ -614,9 +830,12 @@ function CustomerDashboard() {
             </div>
 
 
-            {/* DETAILS */}
+            {/* =================================================
+                TRACKING DETAILS
+            ================================================= */}
 
             <div className="insight-details">
+
 
               <div>
 
@@ -673,12 +892,16 @@ function CustomerDashboard() {
         </section>
 
 
-        {/* ================= LOWER GRID ================= */}
+        {/* =================================================
+            LOWER GRID
+        ================================================= */}
 
         <section className="lower-grid">
 
 
-          {/* ================= DELIVERY STATUS ================= */}
+          {/* =================================================
+              DELIVERY STATUS
+          ================================================= */}
 
           <div className="panel delivery-panel">
 
@@ -705,6 +928,9 @@ function CustomerDashboard() {
 
             <div className="delivery-chart">
 
+
+              {/* NUMBER */}
+
               <div className="chart-number">
 
                 <strong>
@@ -717,6 +943,8 @@ function CustomerDashboard() {
 
               </div>
 
+
+              {/* BARS */}
 
               <div className="chart-bars">
 
@@ -771,7 +999,9 @@ function CustomerDashboard() {
           </div>
 
 
-          {/* ================= NOTIFICATIONS ================= */}
+          {/* =================================================
+              NOTIFICATIONS
+          ================================================= */}
 
           <div className="panel notifications-panel">
 
@@ -789,6 +1019,7 @@ function CustomerDashboard() {
 
               </div>
 
+
               <Link
                 to="/notifications"
                 className="notification-number"
@@ -799,7 +1030,9 @@ function CustomerDashboard() {
             </div>
 
 
-            {/* NOTIFICATION 1 */}
+            {/* =================================================
+                NOTIFICATION 1
+            ================================================= */}
 
             <div className="notification-item">
 
@@ -826,7 +1059,9 @@ function CustomerDashboard() {
             </div>
 
 
-            {/* NOTIFICATION 2 */}
+            {/* =================================================
+                NOTIFICATION 2
+            ================================================= */}
 
             <div className="notification-item">
 
@@ -853,7 +1088,9 @@ function CustomerDashboard() {
             </div>
 
 
-            {/* NOTIFICATION 3 */}
+            {/* =================================================
+                NOTIFICATION 3
+            ================================================= */}
 
             <div className="notification-item">
 
@@ -884,7 +1121,9 @@ function CustomerDashboard() {
         </section>
 
 
-        {/* ================= FOOTER ================= */}
+        {/* =================================================
+            FOOTER
+        ================================================= */}
 
         <footer className="dashboard-footer">
 
