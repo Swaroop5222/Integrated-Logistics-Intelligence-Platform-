@@ -1,0 +1,767 @@
+/* =====================================================
+   REGISTER PAGE
+===================================================== */
+
+.register-page {
+  position: relative;
+
+  min-height: 100vh;
+
+  overflow-x: hidden;
+
+  background: #080b14;
+
+  color: white;
+}
+
+
+.register-background {
+  position: absolute;
+
+  inset: 0;
+
+  background-image:
+    url("../assets/hero.png");
+
+  background-size: cover;
+
+  background-position: center;
+
+  opacity: 0.25;
+
+  filter: saturate(0.75);
+
+  z-index: 0;
+}
+
+
+.register-overlay {
+  position: absolute;
+
+  inset: 0;
+
+  background:
+    radial-gradient(
+      circle at 80% 20%,
+      rgba(139,92,246,0.2),
+      transparent 35%
+    ),
+
+    radial-gradient(
+      circle at 10% 80%,
+      rgba(255,122,0,0.15),
+      transparent 35%
+    ),
+
+    linear-gradient(
+      90deg,
+      #080b14,
+      rgba(8,11,20,0.91),
+      #080b14
+    );
+
+  z-index: 1;
+}
+
+
+/* =====================================================
+   NAVBAR
+===================================================== */
+
+.register-navbar {
+  position: relative;
+
+  z-index: 10;
+
+  height: 78px;
+
+  padding: 0 6%;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  border-bottom:
+    1px solid rgba(255,255,255,0.07);
+
+  background:
+    rgba(8,11,20,0.58);
+
+  backdrop-filter: blur(18px);
+}
+
+
+.register-brand {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  color: white;
+
+  text-decoration: none;
+}
+
+
+.register-brand-icon {
+  width: 40px;
+  height: 40px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 11px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ff7a00,
+      #ff286d
+    );
+
+  box-shadow:
+    0 8px 25px rgba(255,75,30,0.3);
+}
+
+
+.register-brand strong {
+  display: block;
+
+  font-size: 16px;
+
+  font-weight: 800;
+}
+
+
+.register-brand strong span {
+  color: #ff7a00;
+}
+
+
+.register-brand small {
+  display: block;
+
+  margin-top: 2px;
+
+  color: #626a7d;
+
+  font-size: 6px;
+
+  letter-spacing: 1px;
+}
+
+
+.register-login-link {
+  color: #777f91;
+
+  font-size: 9px;
+}
+
+
+.register-login-link a {
+  margin-left: 7px;
+
+  color: #ff7a00;
+
+  font-weight: 800;
+
+  text-decoration: none;
+}
+
+
+/* =====================================================
+   MAIN
+===================================================== */
+
+.register-container {
+  position: relative;
+
+  z-index: 5;
+
+  max-width: 1120px;
+
+  min-height:
+    calc(100vh - 78px);
+
+  margin: auto;
+
+  padding:
+    55px 30px
+    70px;
+
+  display: grid;
+
+  grid-template-columns:
+    1fr 500px;
+
+  gap: 75px;
+
+  align-items: center;
+}
+
+
+/* =====================================================
+   INFO
+===================================================== */
+
+.register-info {
+  max-width: 520px;
+}
+
+
+.register-tag {
+  width: fit-content;
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+  padding:
+    8px 12px;
+
+  border:
+    1px solid rgba(255,255,255,0.11);
+
+  border-radius: 999px;
+
+  background:
+    rgba(255,255,255,0.04);
+
+  color: #aeb5c4;
+
+  font-size: 8px;
+
+  font-weight: 800;
+
+  letter-spacing: 1.3px;
+}
+
+
+.register-tag span {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #16e6b0;
+
+  box-shadow:
+    0 0 14px #16e6b0;
+}
+
+
+.register-info h1 {
+  margin:
+    24px 0 0;
+
+  color: white;
+
+  font-size:
+    clamp(43px, 5vw, 64px);
+
+  line-height: 1;
+
+  letter-spacing: -3px;
+}
+
+
+.register-info h1 span {
+  background:
+    linear-gradient(
+      90deg,
+      #ff7a00,
+      #ff3d83,
+      #9b6cff
+    );
+
+  -webkit-background-clip: text;
+
+  background-clip: text;
+
+  color: transparent;
+}
+
+
+.register-info > p {
+  max-width: 500px;
+
+  margin-top: 20px;
+
+  color: #858ea1;
+
+  font-size: 11px;
+
+  line-height: 1.8;
+}
+
+
+/* =====================================================
+   BENEFITS
+===================================================== */
+
+.register-benefits {
+  margin-top: 27px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 10px;
+}
+
+
+.register-benefits > div {
+  display: flex;
+
+  align-items: center;
+
+  gap: 9px;
+
+  color: #aeb5c5;
+
+  font-size: 9px;
+}
+
+
+.register-benefits svg {
+  color: #2dd4bf;
+
+  flex-shrink: 0;
+}
+
+
+/* =====================================================
+   ROLE PREVIEW
+===================================================== */
+
+.role-preview {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 8px;
+
+  margin-top: 30px;
+}
+
+
+.role-preview > div {
+  min-height: 68px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  justify-content: center;
+
+  align-items: center;
+
+  gap: 6px;
+
+  border:
+    1px solid rgba(255,255,255,0.08);
+
+  border-radius: 11px;
+
+  background:
+    rgba(255,255,255,0.025);
+}
+
+
+.role-preview svg {
+  color: #a78bfa;
+}
+
+
+.role-preview span {
+  color: #777f91;
+
+  font-size: 7px;
+
+  font-weight: 700;
+}
+
+
+/* =====================================================
+   REGISTER CARD
+===================================================== */
+
+.register-card {
+  padding: 29px;
+
+  border:
+    1px solid rgba(255,255,255,0.11);
+
+  border-radius: 20px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(24,28,43,0.95),
+      rgba(12,15,26,0.97)
+    );
+
+  box-shadow:
+    0 35px 90px rgba(0,0,0,0.5);
+
+  backdrop-filter: blur(25px);
+}
+
+
+.register-card-header {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+
+  margin-bottom: 23px;
+}
+
+
+.register-card-icon {
+  width: 42px;
+  height: 42px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 11px;
+
+  color: #fb923c;
+
+  background:
+    rgba(249,115,22,0.13);
+
+  border:
+    1px solid rgba(249,115,22,0.2);
+}
+
+
+.register-card-header h2 {
+  margin: 0;
+
+  color: white;
+
+  font-size: 20px;
+}
+
+
+.register-card-header p {
+  margin-top: 4px;
+
+  color: #687083;
+
+  font-size: 8px;
+}
+
+
+/* =====================================================
+   FORM
+===================================================== */
+
+.register-grid {
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 11px;
+}
+
+
+.register-field {
+  margin-bottom: 14px;
+}
+
+
+.register-field label {
+  display: block;
+
+  margin-bottom: 6px;
+
+  color: #cdd1da;
+
+  font-size: 8px;
+
+  font-weight: 700;
+}
+
+
+.register-field input,
+.register-role-wrapper select {
+  width: 100%;
+
+  height: 40px;
+
+  padding:
+    0 12px;
+
+  border:
+    1px solid rgba(255,255,255,0.09);
+
+  outline: none;
+
+  border-radius: 9px;
+
+  background:
+    rgba(255,255,255,0.045);
+
+  color: #f0f2f5;
+
+  font-size: 9px;
+
+  transition: 0.2s;
+}
+
+
+.register-field input::placeholder {
+  color: #555e70;
+}
+
+
+.register-field input:focus,
+.register-role-wrapper select:focus {
+  border-color:
+    rgba(167,139,250,0.6);
+
+  box-shadow:
+    0 0 0 3px rgba(139,92,246,0.08);
+}
+
+
+.register-role-wrapper {
+  position: relative;
+
+  display: flex;
+
+  align-items: center;
+}
+
+
+.register-role-wrapper > svg {
+  position: absolute;
+
+  left: 12px;
+
+  color: #777f91;
+
+  pointer-events: none;
+}
+
+
+.register-role-wrapper select {
+  padding-left: 40px;
+
+  appearance: none;
+
+  cursor: pointer;
+}
+
+
+.register-role-wrapper select option {
+  background: #151a29;
+
+  color: white;
+}
+
+
+/* =====================================================
+   TERMS
+===================================================== */
+
+.register-terms {
+  display: flex;
+
+  align-items: center;
+
+  gap: 7px;
+
+  margin:
+    3px 0 17px;
+
+  color: #70798b;
+
+  font-size: 7px;
+
+  cursor: pointer;
+}
+
+
+.register-terms input {
+  accent-color: #ff6b1a;
+}
+
+
+/* =====================================================
+   BUTTON
+===================================================== */
+
+.register-submit {
+  width: 100%;
+
+  height: 44px;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  border: none;
+
+  border-radius: 10px;
+
+  color: white;
+
+  background:
+    linear-gradient(
+      135deg,
+      #ff7a00,
+      #ff286d
+    );
+
+  font-size: 10px;
+
+  font-weight: 800;
+
+  box-shadow:
+    0 10px 28px rgba(255,70,40,0.25);
+
+  transition: 0.25s;
+}
+
+
+.register-submit:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 15px 35px rgba(255,70,40,0.4);
+}
+
+
+/* =====================================================
+   SECURITY
+===================================================== */
+
+.register-divider {
+  margin:
+    20px 0 12px;
+
+  text-align: center;
+
+  color: #454d5e;
+
+  font-size: 6px;
+
+  font-weight: 800;
+
+  letter-spacing: 1.3px;
+}
+
+
+.register-security {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 7px;
+
+  color: #656e80;
+
+  font-size: 7px;
+
+  text-align: center;
+}
+
+
+.register-security svg {
+  color: #2dd4bf;
+}
+
+
+/* =====================================================
+   RESPONSIVE
+===================================================== */
+
+@media (max-width: 950px) {
+
+  .register-container {
+    grid-template-columns: 1fr;
+
+    max-width: 570px;
+
+    gap: 45px;
+  }
+
+  .register-info {
+    text-align: center;
+  }
+
+  .register-tag {
+    margin: auto;
+  }
+
+  .register-info > p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .register-benefits {
+    text-align: left;
+  }
+
+}
+
+
+@media (max-width: 550px) {
+
+  .register-navbar {
+    padding: 0 18px;
+  }
+
+  .register-login-link {
+    display: none;
+  }
+
+  .register-container {
+    padding:
+      40px 18px
+      60px;
+  }
+
+  .register-info h1 {
+    font-size: 43px;
+
+    letter-spacing: -2px;
+  }
+
+  .register-card {
+    padding: 22px;
+  }
+
+  .register-grid {
+    grid-template-columns: 1fr;
+
+    gap: 0;
+  }
+
+  .role-preview {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+}

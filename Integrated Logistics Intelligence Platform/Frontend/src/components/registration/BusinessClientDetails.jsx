@@ -1,6 +1,4 @@
-import React from "react";
-
-function BusinessClientDetails({ handleChange, registerFormData, errors }) {
+function BusinessClientDetails({ handleChange, registerFormData }) {
   return (
     <div className="role-details-section">
       <h3 className="section-title">Business Client Information</h3>
@@ -13,52 +11,56 @@ function BusinessClientDetails({ handleChange, registerFormData, errors }) {
             name="companyName"
             placeholder="Company/Business Name"
             value={registerFormData.companyName || ""}
-            onChange={handleChange}
-            className={errors?.companyName ? "error-input" : ""}
+            onChange={(e) => handleChange(e)}
           />
-          {errors?.companyName && <span className="error-text">{errors.companyName}</span>}
         </div>
 
         <div className="form-group">
-          <label htmlFor="registrationNumber">Registration Number</label>
+          <label htmlFor="gstNumber">GST Number</label>
           <input
-            id="registrationNumber"
+            id="gstNumber"
             type="text"
-            name="registrationNumber"
-            placeholder="Registration Number"
-            value={registerFormData.registrationNumber || ""}
-            onChange={handleChange}
-            className={errors?.registrationNumber ? "error-input" : ""}
+            name="gstNumber"
+            placeholder="GST Number"
+            value={registerFormData.gstNumber || ""}
+            onChange={(e) => handleChange(e)}
           />
-          {errors?.registrationNumber && <span className="error-text">{errors.registrationNumber}</span>}
         </div>
 
         <div className="form-group">
-          <label htmlFor="gstTaxId">GST/Tax ID</label>
+          <label htmlFor="businessType">Business Type</label>
           <input
-            id="gstTaxId"
+            id="businessType"
             type="text"
-            name="gstTaxId"
-            placeholder="GST/Tax ID"
-            value={registerFormData.gstTaxId || ""}
-            onChange={handleChange}
-            className={errors?.gstTaxId ? "error-input" : ""}
+            name="businessType"
+            placeholder="Business Type"
+            value={registerFormData.businessType || ""}
+            onChange={(e) => handleChange(e)}
           />
-          {errors?.gstTaxId && <span className="error-text">{errors.gstTaxId}</span>}
         </div>
 
-        <div className="form-group span-2">
-          <label htmlFor="contactPersonName">Contact Person Name</label>
+        <div className="form-group">
+          <label htmlFor="industry">Industry</label>
           <input
-            id="contactPersonName"
+            id="industry"
             type="text"
-            name="contactPersonName"
-            placeholder="Contact Person Name"
-            value={registerFormData.contactPersonName || ""}
-            onChange={handleChange}
-            className={errors?.contactPersonName ? "error-input" : ""}
+            name="industry"
+            placeholder="Industry"
+            value={registerFormData.industry || ""}
+            onChange={(e) => handleChange(e)}
           />
-          {errors?.contactPersonName && <span className="error-text">{errors.contactPersonName}</span>}
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="website">Website</label>
+          <input
+            id="website"
+            type="text"
+            name="website"
+            placeholder="Website"
+            value={registerFormData.website || ""}
+            onChange={(e) => handleChange(e)}
+          />
         </div>
       </div>
     </div>
