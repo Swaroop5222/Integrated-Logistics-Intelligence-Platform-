@@ -76,7 +76,8 @@ public class JwtFilter extends OncePerRequestFilter {
         }
         catch (Exception e){
             System.out.println("Failed while authentication " + e);
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            // Don't block the chain — let Spring Security's own rules decide access
+            filterChain.doFilter(request, response);
             return;
         }
         filterChain.doFilter(request, response);

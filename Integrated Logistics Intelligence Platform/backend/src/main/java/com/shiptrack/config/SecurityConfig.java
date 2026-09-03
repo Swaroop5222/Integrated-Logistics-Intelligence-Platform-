@@ -21,7 +21,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
 import java.util.List;
 
 @Configuration
@@ -33,7 +32,7 @@ public class SecurityConfig {
     private JwtFilter jwtFilter;
 
     @Bean
-    public SecurityFilterChain securityFileterChain(HttpSecurity http){
+    public SecurityFilterChain securityFileterChain(HttpSecurity http) throws Exception {
 
 //        return http.authorizeHttpRequests(auth ->
 //                auth.anyRequest().permitAll()
@@ -44,7 +43,6 @@ public class SecurityConfig {
                 // Public endpoints
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/users").permitAll()
-
 
 
                 // Customer
