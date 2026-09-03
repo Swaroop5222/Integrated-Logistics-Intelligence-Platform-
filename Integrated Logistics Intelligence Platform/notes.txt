@@ -1,0 +1,156 @@
+SHIPTRACK PRO - COMMANDS TO RUN THE APPLICATION
+
+Prerequisites (run in PowerShell):
+java -version
+mvn -version
+node --version
+npm --version
+psql --version
+
+1. Start PostgreSQL and create the database (run once)
+
+psql -U postgres
+CREATE DATABASE shiptrackpro;
+\l
+\c shiptrackpro
+\q
+
+The backend currently expects PostgreSQL username `postgres` and password `gifty`.
+If your password is different, update backend\src\main\resources\application.properties.
+
+2. Run the backend (Terminal 1)
+
+cd D:\Infosys_Internship_Project\backend
+mvn clean install
+mvn spring-boot:run
+
+Backend URL: http://localhost:8080
+
+3. Run the frontend (Terminal 2)
+
+cd D:\Infosys_Internship_Project\Frontend
+npm install
+npm run dev
+
+Frontend URL: http://localhost:5173
+
+4. Optional frontend checks
+
+cd D:\Infosys_Internship_Project\Frontend
+npm run lint
+npm run build
+npm run preview
+
+5. View the database history (pgAdmin)
+
+Open pgAdmin -> Tools -> Query Tool, then run:
+
+SELECT *
+FROM shipment_history
+ORDER BY changed_at;
+
+6. API examples
+3.API
+	PUT {
+    "senderName": "Harsha",
+    "receiverName": "Niveditha",
+    "senderAddress": "Hyderabad",
+    "receiverAddress": "Bangalore",
+    "packageDescription": "Electronics",
+    "packageWeight": 2.5
+}
+GET — Retrieve All Shipments
+
+URL: http://localhost:8080/api/shipments
+
+Method: GET
+
+Body: None
+
+GET — Retrieve Shipment by ID
+
+URL: http://localhost:8080/api/shipments/1
+
+Method: GET
+
+Body: None
+
+GET — Retrieve Shipment by Tracking Number
+
+URL: http://localhost:8080/api/shipments/tracking/SHP-5B6ED453
+
+Method: GET
+
+Body: None
+
+PUT — Update Shipment Details
+
+URL: http://localhost:8080/api/shipments/1
+
+Method: PUT
+
+Body (JSON):
+
+JSON
+{
+  "receiverName": "Niveditha",
+  "receiverAddress": "456 Updated St, Bangalore",
+  "packageDescription": "Electronics",
+  "packageWeight": 2.5
+}
+PATCH — Update Shipment Status (Lifecycle Transitions)
+
+URL: http://localhost:8080/api/shipments/1/status
+
+Method: PATCH
+
+Body (JSON):
+
+1. Move to Picked Up:
+
+JSON
+{
+  "status": "PICKED_UP",
+  "description": "Shipment picked up from sender"
+}
+2. Move to In Transit:
+
+JSON
+{
+  "status": "IN_TRANSIT",
+  "description": "Shipment is now in transit"
+}
+3. Move to Out for Delivery:
+
+JSON
+{
+  "status": "OUT_FOR_DELIVERY",
+  "description": "Shipment is out for delivery"
+}
+4. Move to Delivered:
+
+JSON
+{
+  "status": "DELIVERED",
+  "description": "Shipment delivered successfully"
+}
+GET — View Shipment History
+
+URL: http://localhost:8080/api/shipments/1/history
+
+Method: GET
+
+Body: None
+
+DELETE — Cancel Shipment
+
+URL: http://localhost:8080/api/shipments/2
+
+Method: DELETE
+
+Body: None
+4. search pg4admin 
+	go to tools -> query tool 
+	paste this SELECT * 
+		FROM shipment_history
+		ORDER BY changed_at;

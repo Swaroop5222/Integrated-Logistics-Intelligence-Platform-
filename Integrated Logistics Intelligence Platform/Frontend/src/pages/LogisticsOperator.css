@@ -1,0 +1,198 @@
+.logistics-operator-page {
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 20px;
+  text-align: left;
+}
+
+.lo-header {
+  margin-bottom: 28px;
+}
+
+.lo-header h2 {
+  margin: 0 0 8px 0;
+}
+
+.lo-subtext {
+  color: var(--text);
+  font-size: 14px;
+  margin: 0 0 12px 0;
+}
+
+.mock-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+}
+
+.lo-section {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow);
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+}
+
+.section-desc {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0 0 16px 0;
+}
+
+/* Summary / overview cards */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--code-bg);
+}
+
+.summary-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.summary-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Filter row (Shipment Tracking) */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.filter-row select {
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg);
+  color: var(--text-h);
+}
+
+/* Generic card grid used by several sections */
+.lo-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.lo-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.lo-card p {
+  font-size: 14px;
+  margin: 4px 0;
+  color: var(--text);
+}
+
+.lo-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.tracking-number {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.lo-card-meta {
+  font-size: 12px !important;
+  color: var(--text);
+  margin-top: 8px !important;
+}
+
+.empty-state {
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* Status badges */
+.status-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  white-space: nowrap;
+}
+
+/* Tables (Driver Tracking, ETA / Delay Monitoring) */
+.lo-table-wrapper {
+  overflow-x: auto;
+}
+
+.lo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.lo-table th,
+.lo-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lo-table th {
+  color: var(--text-h);
+  font-weight: 600;
+  background: var(--code-bg);
+}
+
+.lo-table td {
+  color: var(--text);
+}
+
+@media (max-width: 900px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .lo-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
