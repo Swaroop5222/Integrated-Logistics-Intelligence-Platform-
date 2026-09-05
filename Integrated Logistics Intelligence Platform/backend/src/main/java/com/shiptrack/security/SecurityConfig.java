@@ -50,6 +50,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/shipments/track/**").permitAll()
+                .requestMatchers("/api/shipments/*/history").permitAll()
                 .anyRequest().authenticated()
             );
 
