@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "./CustomerActivity.css";
 
@@ -526,15 +526,15 @@ function CustomerActivity() {
                       activity.type === "Shipment Delivered"
                         ? "recent-icon delivered-icon"
                         : activity.type === "Shipment Created"
-                        ? "recent-icon created-icon"
-                        : "recent-icon tracking-icon"
+                          ? "recent-icon created-icon"
+                          : "recent-icon tracking-icon"
                     }
                   >
                     {activity.type === "Shipment Delivered"
                       ? "✓"
                       : activity.type === "Shipment Created"
-                      ? "+"
-                      : "⌖"}
+                        ? "+"
+                        : "⌖"}
                   </div>
 
                   <div className="recent-content">

@@ -24,7 +24,7 @@ cd D:\Infosys_Internship_Project\backend
 mvn clean install
 mvn spring-boot:run
 
-Backend URL: http://localhost:8080
+Backend URL: http://localhost:8081
 
 3. Run the frontend (Terminal 2)
 
@@ -61,7 +61,7 @@ ORDER BY changed_at;
 }
 GET — Retrieve All Shipments
 
-URL: http://localhost:8080/api/shipments
+URL: http://localhost:8081/api/shipments
 
 Method: GET
 
@@ -69,7 +69,7 @@ Body: None
 
 GET — Retrieve Shipment by ID
 
-URL: http://localhost:8080/api/shipments/1
+URL: http://localhost:8081/api/shipments/1
 
 Method: GET
 
@@ -77,7 +77,7 @@ Body: None
 
 GET — Retrieve Shipment by Tracking Number
 
-URL: http://localhost:8080/api/shipments/tracking/SHP-5B6ED453
+URL: http://localhost:8081/api/shipments/tracking/SHP-5B6ED453
 
 Method: GET
 
@@ -85,7 +85,7 @@ Body: None
 
 PUT — Update Shipment Details
 
-URL: http://localhost:8080/api/shipments/1
+URL: http://localhost:8081/api/shipments/1
 
 Method: PUT
 
@@ -100,7 +100,7 @@ JSON
 }
 PATCH — Update Shipment Status (Lifecycle Transitions)
 
-URL: http://localhost:8080/api/shipments/1/status
+URL: http://localhost:8081/api/shipments/1/status
 
 Method: PATCH
 
@@ -136,7 +136,7 @@ JSON
 }
 GET — View Shipment History
 
-URL: http://localhost:8080/api/shipments/1/history
+URL: http://localhost:8081/api/shipments/1/history
 
 Method: GET
 
@@ -144,7 +144,7 @@ Body: None
 
 DELETE — Cancel Shipment
 
-URL: http://localhost:8080/api/shipments/2
+URL: http://localhost:8081/api/shipments/2
 
 Method: DELETE
 
