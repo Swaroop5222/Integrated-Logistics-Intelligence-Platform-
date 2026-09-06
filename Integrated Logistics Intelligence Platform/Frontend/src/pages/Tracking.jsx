@@ -1,15 +1,52 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import "./Tracking.css";
+import { apiRequest } from "../api";
 
 function Tracking() {
   const [searchParams] = useSearchParams();
 
   const initialNumber =
-    searchParams.get("trackingNumber") || "TRK-2026-001";
+    searchParams.get("trackingNumber") || "STP-2026-00001";
 
   const [trackingNumber, setTrackingNumber] = useState(initialNumber);
   const [searchedNumber, setSearchedNumber] = useState(initialNumber);
+  const [shipment, setShipment] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchTracking() {
+      if (!searchedNumber.trim()) return;
+      setLoading(true);
+      setNotFound(false);
+
+      try {
+        const data = await apiRequest(`/api/shipments/track/${encodeURIComponent(searchedNumber.trim())}`);
+        if (active) {
+          setShipment(data);
+          setNotFound(false);
+        }
+      } catch {
+        if (active) {
+          setShipment(null);
+          setNotFound(true);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchTracking();
+
+    return () => {
+      active = false;
+    };
+  }, [searchedNumber]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -113,112 +150,199 @@ function Tracking() {
         </section>
 
         {/* SHIPMENT */}
-        <section className="tracking-panel">
-          <div className="tracking-panel-header">
-            <div>
-              <span>TRACKING ID</span>
-              <h2>{searchedNumber}</h2>
-            </div>
-
-            <div className="tracking-live">
-              <span></span>
-              LIVE TRACKING
-            </div>
+        {loading ? (
+          <div className="tracking-panel" style={{ padding: "40px", textAlign: "center" }}>
+            <p>Loading tracking information for {searchedNumber}...</p>
           </div>
-
-          {/* STATUS */}
-          <div className="tracking-current-status">
-            <div className="tracking-status-icon">✓</div>
-
-            <div>
-              <span>Current Status</span>
-              <h2>In Transit</h2>
-              <p>Shipment is moving toward the destination.</p>
-            </div>
-
-            <div className="tracking-eta">
-              <span>ESTIMATED DELIVERY</span>
-              <strong>Sep 04, 2026</strong>
-              <small>By 6:00 PM</small>
-            </div>
+        ) : notFound ? (
+          <div className="tracking-panel" style={{ padding: "30px", textAlign: "center", color: "#f87171" }}>
+            <h3>Shipment Not Found</h3>
+            <p>No active shipment was found for tracking ID: <strong>{searchedNumber}</strong>. Please check your tracking number and try again.</p>
           </div>
-
-          {/* TIMELINE */}
-          <div className="tracking-timeline">
-            <div className="timeline-step completed">
-              <div className="timeline-dot">✓</div>
+        ) : (
+          <section className="tracking-panel">
+            <div className="tracking-panel-header">
               <div>
-                <strong>Shipment Picked Up</strong>
-                <span>Hyderabad · Aug 31, 09:30 AM</span>
+                <span>TRACKING ID</span>
+                <h2>{shipment ? shipment.trackingNumber : searchedNumber}</h2>
+              </div>
+
+              <div className="tracking-live">
+                <span></span>
+                LIVE TRACKING
               </div>
             </div>
 
-            <div className="timeline-line"></div>
+            {/* STATUS */}
+            <div className="tracking-current-status">
+              <div className="tracking-status-icon">✓</div>
 
-            <div className="timeline-step completed">
-              <div className="timeline-dot">✓</div>
               <div>
-                <strong>Departed Facility</strong>
-                <span>Bangalore Hub · Sep 01, 06:20 AM</span>
+                <span>Current Status</span>
+                <h2>{shipment ? String(shipment.status).replaceAll("_", " ") : "In Transit"}</h2>
+                <p>
+                  {shipment?.status === "CANCELLED"
+                    ? "This shipment has been cancelled."
+                    : shipment?.status === "DELIVERED"
+                    ? "Shipment has been delivered successfully."
+                    : shipment?.status === "OUT_FOR_DELIVERY"
+                    ? "Shipment is out for delivery to the destination."
+                    : shipment?.status === "IN_TRANSIT"
+                    ? "Shipment is moving toward the destination."
+                    : shipment?.status === "PICKED_UP"
+                    ? "Shipment has been picked up by the operator."
+                    : "Shipment has been registered and is pending pickup."}
+                </p>
+              </div>
+
+              <div className="tracking-eta">
+                <span>LAST UPDATE</span>
+                <strong>
+                  {shipment?.updatedAt
+                    ? new Date(shipment.updatedAt).toLocaleDateString()
+                    : "Today"}
+                </strong>
+                <small>
+                  {shipment?.updatedAt
+                    ? new Date(shipment.updatedAt).toLocaleTimeString()
+                    : "Latest Status"}
+                </small>
               </div>
             </div>
 
-            <div className="timeline-line"></div>
+            {/* TIMELINE */}
+            <div className="tracking-timeline">
+              <div
+                className={`timeline-step ${
+                  shipment?.status ? "completed" : "completed"
+                }`}
+              >
+                <div className="timeline-dot">✓</div>
+                <div>
+                  <strong>Shipment Created</strong>
+                  <span>
+                    {shipment?.createdAt
+                      ? new Date(shipment.createdAt).toLocaleDateString()
+                      : "Registered"}
+                  </span>
+                </div>
+              </div>
 
-            <div className="timeline-step current">
-              <div className="timeline-dot">●</div>
-              <div>
-                <strong>In Transit</strong>
-                <span>NH 44 · Shipment moving normally</span>
+              <div className="timeline-line"></div>
+
+              <div
+                className={`timeline-step ${
+                  ["PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"].includes(
+                    shipment?.status
+                  )
+                    ? "completed"
+                    : shipment?.status === "CREATED"
+                    ? "current"
+                    : "completed"
+                }`}
+              >
+                <div className="timeline-dot">✓</div>
+                <div>
+                  <strong>Picked Up</strong>
+                  <span>Facility Pickup</span>
+                </div>
+              </div>
+
+              <div className="timeline-line"></div>
+
+              <div
+                className={`timeline-step ${
+                  ["IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"].includes(
+                    shipment?.status
+                  )
+                    ? "completed"
+                    : shipment?.status === "PICKED_UP"
+                    ? "current"
+                    : "current"
+                }`}
+              >
+                <div className="timeline-dot">●</div>
+                <div>
+                  <strong>In Transit</strong>
+                  <span>En Route to Destination</span>
+                </div>
+              </div>
+
+              <div className="timeline-line"></div>
+
+              <div
+                className={`timeline-step ${
+                  ["OUT_FOR_DELIVERY", "DELIVERED"].includes(shipment?.status)
+                    ? "completed"
+                    : shipment?.status === "IN_TRANSIT"
+                    ? "current"
+                    : ""
+                }`}
+              >
+                <div className="timeline-dot">4</div>
+                <div>
+                  <strong>Out for Delivery</strong>
+                  <span>Local Courier</span>
+                </div>
+              </div>
+
+              <div className="timeline-line"></div>
+
+              <div
+                className={`timeline-step ${
+                  shipment?.status === "DELIVERED"
+                    ? "completed"
+                    : shipment?.status === "CANCELLED"
+                    ? "cancelled"
+                    : ""
+                }`}
+              >
+                <div className="timeline-dot">
+                  {shipment?.status === "CANCELLED" ? "✕" : "5"}
+                </div>
+                <div>
+                  <strong>
+                    {shipment?.status === "CANCELLED"
+                      ? "Cancelled"
+                      : "Delivered"}
+                  </strong>
+                  <span>
+                    {shipment?.status === "DELIVERED"
+                      ? "Received"
+                      : shipment?.status === "CANCELLED"
+                      ? "Order Cancelled"
+                      : "Pending"}
+                  </span>
+                </div>
               </div>
             </div>
-
-            <div className="timeline-line"></div>
-
-            <div className="timeline-step">
-              <div className="timeline-dot">4</div>
-              <div>
-                <strong>Out for Delivery</strong>
-                <span>Pending</span>
-              </div>
-            </div>
-
-            <div className="timeline-line"></div>
-
-            <div className="timeline-step">
-              <div className="timeline-dot">5</div>
-              <div>
-                <strong>Delivered</strong>
-                <span>Pending</span>
-              </div>
-            </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* DETAILS */}
         <section className="tracking-details-grid">
           <div className="tracking-detail-card">
             <span>ORIGIN</span>
-            <strong>Hyderabad</strong>
-            <small>Telangana, India</small>
+            <strong>{shipment?.senderAddress || "Hyderabad"}</strong>
+            <small>{shipment?.senderName || "Sender"}</small>
           </div>
 
           <div className="tracking-detail-card">
             <span>DESTINATION</span>
-            <strong>Bangalore</strong>
-            <small>Karnataka, India</small>
+            <strong>{shipment?.receiverAddress || "Bengaluru"}</strong>
+            <small>{shipment?.receiverName || "Receiver"}</small>
           </div>
 
           <div className="tracking-detail-card">
             <span>PACKAGE</span>
-            <strong>Electronics</strong>
-            <small>2.5 kg · 1 package</small>
+            <strong>{shipment?.packageDescription || "General Goods"}</strong>
+            <small>{shipment?.packageWeightKg ? `${shipment.packageWeightKg} kg` : "1.0 kg"}</small>
           </div>
 
           <div className="tracking-detail-card">
-            <span>DELIVERY TYPE</span>
-            <strong>Express</strong>
-            <small>Priority delivery</small>
+            <span>OPERATOR</span>
+            <strong>{shipment?.assignedOperatorName || "Standard Logistics"}</strong>
+            <small>{shipment?.businessClientName ? `Client: ${shipment.businessClientName}` : "Express Priority"}</small>
           </div>
         </section>
 

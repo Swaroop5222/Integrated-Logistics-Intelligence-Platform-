@@ -169,16 +169,18 @@ function PackageInformation() {
 
           <div className="package-profile">
 
-            <div className="package-avatar">
-              R
-            </div>
+  <div className="package-avatar">
+    {JSON.parse(localStorage.getItem("user"))?.fullName?.charAt(0) || "U"}
+  </div>
 
-            <div>
-              <strong>Rekha Patil</strong>
-              <span>Business Client</span>
-            </div>
+  <div>
+    <strong>
+      {JSON.parse(localStorage.getItem("user"))?.fullName || "User"}
+    </strong>
+    <span>Business Client</span>
+  </div>
 
-          </div>
+</div>
 
         </header>
 

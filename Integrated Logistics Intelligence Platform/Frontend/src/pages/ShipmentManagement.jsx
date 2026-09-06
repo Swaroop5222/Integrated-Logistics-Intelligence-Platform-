@@ -1,109 +1,127 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "./ShipmentManagement.css";
-
-const shipmentData = [
-  {
-    id: "TRK-2026-101",
-    order: "ORD-2026-501",
-    customer: "TechNova Pvt Ltd",
-    route: "Hyderabad → Bangalore",
-    status: "In Transit",
-    priority: "Express",
-    date: "02 Sep 2026",
-    eta: "Today, 6:30 PM",
-  },
-  {
-    id: "TRK-2026-102",
-    order: "ORD-2026-502",
-    customer: "UrbanMart",
-    route: "Mumbai → Pune",
-    status: "Delivered",
-    priority: "Standard",
-    date: "01 Sep 2026",
-    eta: "Delivered",
-  },
-  {
-    id: "TRK-2026-103",
-    order: "ORD-2026-503",
-    customer: "GreenLeaf Foods",
-    route: "Chennai → Hyderabad",
-    status: "Picked Up",
-    priority: "Standard",
-    date: "01 Sep 2026",
-    eta: "03 Sep 2026",
-  },
-  {
-    id: "TRK-2026-104",
-    order: "ORD-2026-504",
-    customer: "BuildPro Industries",
-    route: "Delhi → Jaipur",
-    status: "Delayed",
-    priority: "Urgent",
-    date: "31 Aug 2026",
-    eta: "05 Sep 2026",
-  },
-  {
-    id: "TRK-2026-105",
-    order: "ORD-2026-505",
-    customer: "FreshCart",
-    route: "Bangalore → Chennai",
-    status: "In Transit",
-    priority: "Express",
-    date: "30 Aug 2026",
-    eta: "04 Sep 2026",
-  },
-  {
-    id: "TRK-2026-106",
-    order: "ORD-2026-506",
-    customer: "MediCare Supplies",
-    route: "Pune → Mumbai",
-    status: "Delivered",
-    priority: "Standard",
-    date: "29 Aug 2026",
-    eta: "Delivered",
-  },
-  {
-    id: "TRK-2026-107",
-    order: "ORD-2026-507",
-    customer: "AutoParts India",
-    route: "Hyderabad → Chennai",
-    status: "Delayed",
-    priority: "Urgent",
-    date: "28 Aug 2026",
-    eta: "06 Sep 2026",
-  },
-  {
-    id: "TRK-2026-108",
-    order: "ORD-2026-508",
-    customer: "SmartHome",
-    route: "Delhi → Gurgaon",
-    status: "Picked Up",
-    priority: "Standard",
-    date: "27 Aug 2026",
-    eta: "03 Sep 2026",
-  },
-];
+import { apiRequest } from "../api";
 
 function ShipmentManagement() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [shipmentData, setShipmentData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Logged-in user
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // Get currently logged-in user from localStorage
+    try {
+      const storedUser = JSON.parse(
+        localStorage.getItem("shiptrackUser") || "null"
+      );
+
+      setUser(storedUser);
+    } catch (error) {
+      console.error("Unable to read logged-in user:", error);
+      setUser(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadShipments() {
+      try {
+        const data = await apiRequest("/api/shipments");
+
+        if (active) {
+          setShipmentData(Array.isArray(data) ? data : []);
+          setError("");
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message || "Unable to load shipments.");
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadShipments();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const handleCancel = async (id, trackingNumber) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to cancel shipment ${
+          trackingNumber || id
+        }?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/shipments/${id}/cancel`, {
+        method: "PATCH",
+      });
+
+      setShipmentData((prev) =>
+        prev.map((s) =>
+          s.id === id ? { ...s, status: "CANCELLED" } : s
+        )
+      );
+
+      alert("Shipment cancelled successfully.");
+    } catch (err) {
+      alert(`Error cancelling shipment: ${err.message}`);
+    }
+  };
 
   const filteredShipments = shipmentData.filter((shipment) => {
     const searchValue = search.toLowerCase();
 
+    const id = shipment.trackingNumber || "";
+    const customer = shipment.customerName || "";
+
+    const route = `${shipment.senderAddress || ""} ${
+      shipment.receiverAddress || ""
+    }`;
+
     const matchesSearch =
-      shipment.id.toLowerCase().includes(searchValue) ||
-      shipment.order.toLowerCase().includes(searchValue) ||
-      shipment.customer.toLowerCase().includes(searchValue) ||
-      shipment.route.toLowerCase().includes(searchValue);
+      id.toLowerCase().includes(searchValue) ||
+      customer.toLowerCase().includes(searchValue) ||
+      route.toLowerCase().includes(searchValue);
+
+    const normalizedStatus = String(
+      shipment.status || ""
+    ).replaceAll("_", " ");
 
     const matchesStatus =
       statusFilter === "All" ||
-      shipment.status === statusFilter;
+      normalizedStatus === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
+
+  // Logged-in user's name
+  const userName =
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    "Business Client";
+
+  // First letter for avatar
+  const userInitial = userName
+    .trim()
+    .charAt(0)
+    .toUpperCase();
 
   return (
     <div className="shipment-management-page">
@@ -263,15 +281,24 @@ function ShipmentManagement() {
           </div>
 
 
+          {/* =============================
+              LOGGED-IN USER PROFILE
+          ============================= */}
+
           <div className="management-profile">
 
             <div className="management-avatar">
-              R
+              {userInitial}
             </div>
 
             <div>
-              <strong>Rekha Patil</strong>
-              <span>Business Client</span>
+              <strong>
+                {userName}
+              </strong>
+
+              <span>
+                Business Client
+              </span>
             </div>
 
           </div>
@@ -289,9 +316,13 @@ function ShipmentManagement() {
 
             <span>Total Shipments</span>
 
-            <strong>128</strong>
+            <strong>
+              {shipmentData.length}
+            </strong>
 
-            <small>All shipments</small>
+            <small>
+              All shipments
+            </small>
 
           </div>
 
@@ -300,9 +331,17 @@ function ShipmentManagement() {
 
             <span>In Transit</span>
 
-            <strong>32</strong>
+            <strong>
+              {
+                shipmentData.filter(
+                  (s) => s.status === "IN_TRANSIT"
+                ).length
+              }
+            </strong>
 
-            <small>Currently moving</small>
+            <small>
+              Currently moving
+            </small>
 
           </div>
 
@@ -311,9 +350,17 @@ function ShipmentManagement() {
 
             <span>Delivered</span>
 
-            <strong>87</strong>
+            <strong>
+              {
+                shipmentData.filter(
+                  (s) => s.status === "DELIVERED"
+                ).length
+              }
+            </strong>
 
-            <small>Successfully delivered</small>
+            <small>
+              Successfully delivered
+            </small>
 
           </div>
 
@@ -322,9 +369,17 @@ function ShipmentManagement() {
 
             <span>Delayed</span>
 
-            <strong>09</strong>
+            <strong>
+              {
+                shipmentData.filter(
+                  (s) => s.status === "FAILED_DELIVERY"
+                ).length
+              }
+            </strong>
 
-            <small>Needs attention</small>
+            <small>
+              Needs attention
+            </small>
 
           </div>
 
@@ -368,13 +423,17 @@ function ShipmentManagement() {
 
             <div className="management-search">
 
-              <span>⌕</span>
+              <span>
+                ⌕
+              </span>
 
               <input
                 type="text"
                 placeholder="Search tracking ID, order, customer or route..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) =>
+                  setSearch(e.target.value)
+                }
               />
 
             </div>
@@ -383,16 +442,52 @@ function ShipmentManagement() {
             <select
               className="management-filter"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) =>
+                setStatusFilter(e.target.value)
+              }
             >
-              <option value="All">All Status</option>
-              <option value="In Transit">In Transit</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Picked Up">Picked Up</option>
-              <option value="Delayed">Delayed</option>
+
+              <option value="All">
+                All Status
+              </option>
+
+              <option value="IN TRANSIT">
+                In Transit
+              </option>
+
+              <option value="DELIVERED">
+                Delivered
+              </option>
+
+              <option value="PICKED UP">
+                Picked Up
+              </option>
+
+              <option value="FAILED DELIVERY">
+                Failed Delivery
+              </option>
+
             </select>
 
           </div>
+
+
+          {/* LOADING */}
+
+          {loading && (
+            <div className="no-results">
+              Loading shipments...
+            </div>
+          )}
+
+
+          {/* ERROR */}
+
+          {error && (
+            <div className="no-results">
+              Error: {error}
+            </div>
+          )}
 
 
           {/* TABLE */}
@@ -405,21 +500,37 @@ function ShipmentManagement() {
 
                 <tr>
 
-                  <th>TRACKING ID</th>
+                  <th>
+                    TRACKING ID
+                  </th>
 
-                  <th>CUSTOMER</th>
+                  <th>
+                    CUSTOMER
+                  </th>
 
-                  <th>ROUTE</th>
+                  <th>
+                    ROUTE
+                  </th>
 
-                  <th>CREATED</th>
+                  <th>
+                    CREATED
+                  </th>
 
-                  <th>PRIORITY</th>
+                  <th>
+                    PRIORITY
+                  </th>
 
-                  <th>STATUS</th>
+                  <th>
+                    STATUS
+                  </th>
 
-                  <th>ETA</th>
+                  <th>
+                    ETA
+                  </th>
 
-                  <th>ACTION</th>
+                  <th>
+                    ACTION
+                  </th>
 
                 </tr>
 
@@ -428,124 +539,245 @@ function ShipmentManagement() {
 
               <tbody>
 
-                {filteredShipments.map((shipment) => (
+                {filteredShipments.map(
+                  (shipment) => (
 
-                  <tr key={shipment.id}>
+                    <tr
+                      key={
+                        shipment.trackingNumber ||
+                        `SHIP-${shipment.id}`
+                      }
+                    >
 
-                    <td>
+                      <td>
 
-                      <strong>
-                        {shipment.id}
-                      </strong>
+                        <strong>
+                          {
+                            shipment.trackingNumber ||
+                            `SHIP-${shipment.id}`
+                          }
+                        </strong>
 
-                      <small>
-                        {shipment.order}
-                      </small>
+                        <small>
+                          {
+                            shipment.id
+                              ? `Shipment #${shipment.id}`
+                              : ""
+                          }
+                        </small>
 
-                    </td>
-
-
-                    <td>
-
-                      <strong className="customer-name">
-                        {shipment.customer}
-                      </strong>
-
-                    </td>
-
-
-                    <td>
-
-                      <span className="route-text">
-                        {shipment.route}
-                      </span>
-
-                    </td>
+                      </td>
 
 
-                    <td>
+                      <td>
 
-                      <span className="date-text">
-                        {shipment.date}
-                      </span>
+                        <strong className="customer-name">
+                          {
+                            shipment.customerName ||
+                            "Unassigned"
+                          }
+                        </strong>
 
-                    </td>
+                      </td>
 
 
-                    <td>
+                      <td>
 
-                      <span
-                        className={`priority ${shipment.priority
-                          .toLowerCase()
-                          .replace(" ", "-")}`}
+                        <span className="route-text">
+
+                          {`${
+                            shipment.senderAddress ||
+                            "—"
+                          } → ${
+                            shipment.receiverAddress ||
+                            "—"
+                          }`}
+
+                        </span>
+
+                      </td>
+
+
+                      <td>
+
+                        <span className="date-text">
+
+                          {
+                            shipment.createdAt
+                              ? new Date(
+                                  shipment.createdAt
+                                ).toLocaleDateString()
+                              : "—"
+                          }
+
+                        </span>
+
+                      </td>
+
+
+                      <td>
+
+                        <span
+                          className={`priority ${String(
+                            shipment.priority ||
+                              "standard"
+                          )
+                            .toLowerCase()
+                            .replaceAll(
+                              " ",
+                              "-"
+                            )}`}
+                        >
+
+                          {
+                            shipment.priority ||
+                            "Standard"
+                          }
+
+                        </span>
+
+                      </td>
+
+
+                      <td>
+
+                        <span
+                          className={`management-status ${String(
+                            shipment.status ||
+                              "unknown"
+                          )
+                            .toLowerCase()
+                            .replaceAll(
+                              "_",
+                              "-"
+                            )
+                            .replaceAll(
+                              " ",
+                              "-"
+                            )}`}
+                        >
+
+                          ●{" "}
+                          {String(
+                            shipment.status ||
+                              "UNKNOWN"
+                          ).replaceAll(
+                            "_",
+                            " "
+                          )}
+
+                        </span>
+
+                      </td>
+
+
+                      <td>
+
+                        <span className="eta-text">
+
+                          {
+                            shipment.updatedAt
+                              ? new Date(
+                                  shipment.updatedAt
+                                ).toLocaleDateString()
+                              : "—"
+                          }
+
+                        </span>
+
+                      </td>
+
+
+                      <td
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          alignItems: "center",
+                        }}
                       >
-                        {shipment.priority}
-                      </span>
 
-                    </td>
-
-
-                    <td>
-
-                      <span
-                        className={`management-status ${shipment.status
-                          .toLowerCase()
-                          .replace(" ", "-")}`}
-                      >
-                        ● {shipment.status}
-                      </span>
-
-                    </td>
+                        <Link
+                          to={`/business/tracking?trackingNumber=${
+                            shipment.trackingNumber ||
+                            `SHIP-${shipment.id}`
+                          }`}
+                          className="manage-action"
+                        >
+                          Track
+                        </Link>
 
 
-                    <td>
+                        {shipment.id &&
+                          shipment.status !==
+                            "CANCELLED" &&
+                          shipment.status !==
+                            "DELIVERED" && (
 
-                      <span className="eta-text">
-                        {shipment.eta}
-                      </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCancel(
+                                  shipment.id,
+                                  shipment.trackingNumber
+                                )
+                              }
+                              className="manage-action"
+                              style={{
+                                background:
+                                  "rgba(239, 68, 68, 0.1)",
+                                color:
+                                  "#ef4444",
+                                border:
+                                  "1px solid rgba(239, 68, 68, 0.3)",
+                                cursor:
+                                  "pointer",
+                                padding:
+                                  "4px 8px",
+                                borderRadius:
+                                  "4px",
+                              }}
+                            >
+                              Cancel
+                            </button>
 
-                    </td>
+                          )}
 
+                      </td>
 
-                    <td>
+                    </tr>
 
-                      <Link
-                        to={`/business/tracking?trackingNumber=${shipment.id}`}
-                        className="manage-action"
-                      >
-                        Track
-                      </Link>
-
-                    </td>
-
-                  </tr>
-
-                ))}
+                  )
+                )}
 
               </tbody>
 
             </table>
 
 
-            {filteredShipments.length === 0 && (
+            {/* NO RESULTS */}
 
-              <div className="no-results">
+            {filteredShipments.length ===
+              0 &&
+              !loading && (
 
-                <div>
-                  ⌕
+                <div className="no-results">
+
+                  <div>
+                    ⌕
+                  </div>
+
+                  <h3>
+                    No shipments found
+                  </h3>
+
+                  <p>
+                    Try changing your search
+                    or status filter.
+                  </p>
+
                 </div>
 
-                <h3>
-                  No shipments found
-                </h3>
-
-                <p>
-                  Try changing your search or status filter.
-                </p>
-
-              </div>
-
-            )}
+              )}
 
           </div>
 
@@ -555,7 +787,9 @@ function ShipmentManagement() {
           <div className="management-table-footer">
 
             <span>
-              Showing {filteredShipments.length} of 128 shipments
+              Showing{" "}
+              {filteredShipments.length} of{" "}
+              {shipmentData.length} shipments
             </span>
 
             <div className="pagination">

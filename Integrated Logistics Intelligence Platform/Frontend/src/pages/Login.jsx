@@ -13,6 +13,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 import "./Login.css";
+import { apiRequest } from "../api";
 
 
 function Login() {
@@ -20,6 +21,7 @@ function Login() {
   const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -48,136 +50,69 @@ function Login() {
   // LOGIN
   // =========================================================
 
-  const handleSubmit = (e) => {
-
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
 
     const email = formData.email.trim().toLowerCase();
     const password = formData.password;
-    const role = formData.role;
+    const selectedRole = formData.role;
 
-
-    // -----------------------------
-    // Role validation
-    // -----------------------------
-
-    if (!role) {
-
+    if (!selectedRole) {
       alert("Please select your role.");
-
       return;
     }
 
+    const roleMap = {
+      customer: "CUSTOMER",
+      business: "BUSINESS_CLIENT",
+      operator: "LOGISTICS_OPERATOR",
+      support: "SUPPORT_AGENT",
+      admin: "ADMINISTRATOR",
+    };
 
-    // -----------------------------
-    // Get registered users
-    // -----------------------------
+    const backendRole = roleMap[selectedRole];
 
-    let registeredUsers = [];
-
+    setIsSubmitting(true);
     try {
+      const data = await apiRequest("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-      registeredUsers = JSON.parse(
-        localStorage.getItem("shiptrackUsers") || "[]"
-      );
-
-      if (!Array.isArray(registeredUsers)) {
-        registeredUsers = [];
+      if (data.role !== backendRole) {
+        alert(`This account belongs to ${data.role}, not ${backendRole}.`);
+        return;
       }
 
+      localStorage.setItem("shiptrackToken", data.token);
+
+      localStorage.setItem(
+        "shiptrackUser",
+        JSON.stringify({
+          id: data.id || data.userId,
+          email: data.email,
+          role: data.role,
+        })
+      );
+
+      const routes = {
+        CUSTOMER: "/dashboard/customer",
+        BUSINESS_CLIENT: "/dashboard/business",
+        LOGISTICS_OPERATOR: "/dashboard/operator",
+        SUPPORT_AGENT: "/dashboard/support",
+        ADMINISTRATOR: "/dashboard/admin",
+      };
+
+      navigate(routes[data.role] || "/");
     } catch (error) {
-
-      console.error(
-        "Unable to read registered users:",
-        error
-      );
-
-      registeredUsers = [];
+      console.error("Login error:", error);
+      alert(error.message || "Unable to connect to backend.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-
-    // =========================================================
-    // FIND USER
-    // =========================================================
-
-    const user = registeredUsers.find(
-      (registeredUser) =>
-
-        registeredUser.email?.toLowerCase() === email &&
-
-        registeredUser.password === password &&
-
-        registeredUser.role === role
-    );
-
-
-    // -----------------------------
-    // Invalid credentials
-    // -----------------------------
-
-    if (!user) {
-
-      alert(
-        "Invalid email, password, or role. Please check your credentials."
-      );
-
-      return;
-    }
-
-
-    // =========================================================
-    // CREATE CURRENT SESSION
-    //
-    // Do NOT store password here.
-    // =========================================================
-
-    const currentUser = {
-
-      id: user.id,
-
-      firstName: user.firstName,
-
-      lastName: user.lastName,
-
-      name: user.name,
-
-      email: user.email,
-
-      mobile: user.mobile,
-
-      role: user.role,
-
-    };
-
-
-    localStorage.setItem(
-      "shiptrackUser",
-      JSON.stringify(currentUser)
-    );
-
-
-    // =========================================================
-    // ROLE BASED NAVIGATION
-    // =========================================================
-
-    const routes = {
-
-      customer: "/dashboard/customer",
-
-      business: "/dashboard/business",
-
-      operator: "/dashboard/operator",
-
-      support: "/dashboard/support",
-
-      admin: "/dashboard/admin",
-
-    };
-
-
-    navigate(routes[user.role]);
-
   };
 
 
@@ -522,9 +457,11 @@ function Login() {
             <button
               type="submit"
               className="auth-submit"
+              disabled={isSubmitting}
+              style={isSubmitting ? { opacity: 0.7, cursor: "not-allowed" } : {}}
             >
 
-              Sign In
+              {isSubmitting ? "Signing In..." : "Sign In"}
 
               <ArrowRight size={18} />
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowLeft,
@@ -8,33 +9,87 @@ import {
   ChevronRight,
 } from "lucide-react";
 import "./ModulePages.css";
+import { apiRequest } from "../api";
+
+const defaultShipments = [
+  {
+    id: "TRK-2026-001",
+    from: "Hyderabad",
+    to: "Bengaluru",
+    status: "In Transit",
+    eta: "Today, 6:30 PM",
+    progress: 68,
+  },
+  {
+    id: "TRK-2026-003",
+    from: "Mumbai",
+    to: "Pune",
+    status: "Picked Up",
+    eta: "03 Sep 2026",
+    progress: 28,
+  },
+  {
+    id: "TRK-2026-004",
+    from: "Delhi",
+    to: "Jaipur",
+    status: "In Transit",
+    eta: "04 Sep 2026",
+    progress: 54,
+  },
+];
+
 function ActiveShipments() {
-  const shipments = [
-    {
-      id: "TRK-2026-001",
-      from: "Hyderabad",
-      to: "Bengaluru",
-      status: "In Transit",
-      eta: "Today, 6:30 PM",
-      progress: 68,
-    },
-    {
-      id: "TRK-2026-003",
-      from: "Mumbai",
-      to: "Pune",
-      status: "Picked Up",
-      eta: "03 Sep 2026",
-      progress: 28,
-    },
-    {
-      id: "TRK-2026-004",
-      from: "Delhi",
-      to: "Jaipur",
-      status: "In Transit",
-      eta: "04 Sep 2026",
-      progress: 54,
-    },
-  ];
+  const [shipments, setShipments] = useState(defaultShipments);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadActiveShipments() {
+      try {
+        const data = await apiRequest("/api/shipments");
+        if (active && Array.isArray(data) && data.length > 0) {
+          const activeList = data.filter(
+            (s) => s.status !== "DELIVERED" && s.status !== "CANCELLED"
+          );
+
+          if (activeList.length > 0) {
+            setShipments(
+              activeList.map((s) => ({
+                id: s.trackingNumber,
+                from: s.senderAddress || "Hyderabad",
+                to: s.receiverAddress || "Destination",
+                status: String(s.status).replaceAll("_", " "),
+                eta: s.updatedAt
+                  ? new Date(s.updatedAt).toLocaleDateString()
+                  : "Pending",
+                progress:
+                  s.status === "OUT_FOR_DELIVERY"
+                    ? 85
+                    : s.status === "IN_TRANSIT"
+                    ? 60
+                    : s.status === "PICKED_UP"
+                    ? 35
+                    : 15,
+              }))
+            );
+          }
+        }
+      } catch {
+        // Fall back to default shipments
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadActiveShipments();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="module-page">
