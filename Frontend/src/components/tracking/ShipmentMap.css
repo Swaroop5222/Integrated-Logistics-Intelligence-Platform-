@@ -1,0 +1,101 @@
+.shipment-map-card {
+    margin: 20px 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    background: #111521;
+}
+
+.shipment-map-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.shipment-map-eyebrow {
+    color: #ff7954;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+}
+
+.shipment-map-heading h2 {
+    margin: 6px 0 0;
+    font-size: 18px;
+}
+
+.shipment-map-provider,
+.shipment-map-note {
+    color: #8d95a8;
+    font-size: 11px;
+}
+
+.shipment-map {
+    height: 360px;
+    background: #dbe7e4;
+}
+
+.shipment-map-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 24px 16px;
+    color: #9ca4b6;
+    font-size: 11px;
+}
+
+.shipment-map-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.shipment-map-meta strong {
+    margin-left: auto;
+    color: #f5f7fb;
+    font-size: 11px;
+}
+
+.map-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.map-dot-origin {
+    background: #14b8a6;
+}
+
+.map-dot-current {
+    background: #f97316;
+}
+
+.map-dot-destination {
+    background: #fb7185;
+}
+
+.shipment-map-note {
+    margin: 0;
+    padding: 0 24px 16px;
+    color: #f4a261;
+}
+
+@media (max-width: 700px) {
+
+    .shipment-map-heading,
+    .shipment-map-meta {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .shipment-map-meta strong {
+        margin-left: 0;
+    }
+
+    .shipment-map {
+        height: 300px;
+    }
+}
