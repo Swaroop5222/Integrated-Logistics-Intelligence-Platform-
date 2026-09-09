@@ -234,10 +234,10 @@ function Tracking() {
                 className={`timeline-step ${["PICKED_UP", "IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"].includes(
                   shipment?.status
                 )
-                    ? "completed"
-                    : shipment?.status === "CREATED"
-                      ? "current"
-                      : "completed"
+                  ? "completed"
+                  : shipment?.status === "CREATED"
+                    ? "current"
+                    : "completed"
                   }`}
               >
                 <div className="timeline-dot">✓</div>
@@ -253,10 +253,10 @@ function Tracking() {
                 className={`timeline-step ${["IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED"].includes(
                   shipment?.status
                 )
-                    ? "completed"
-                    : shipment?.status === "PICKED_UP"
-                      ? "current"
-                      : "current"
+                  ? "completed"
+                  : shipment?.status === "PICKED_UP"
+                    ? "current"
+                    : "current"
                   }`}
               >
                 <div className="timeline-dot">●</div>
@@ -270,10 +270,10 @@ function Tracking() {
 
               <div
                 className={`timeline-step ${["OUT_FOR_DELIVERY", "DELIVERED"].includes(shipment?.status)
-                    ? "completed"
-                    : shipment?.status === "IN_TRANSIT"
-                      ? "current"
-                      : ""
+                  ? "completed"
+                  : shipment?.status === "IN_TRANSIT"
+                    ? "current"
+                    : ""
                   }`}
               >
                 <div className="timeline-dot">4</div>
@@ -287,10 +287,10 @@ function Tracking() {
 
               <div
                 className={`timeline-step ${shipment?.status === "DELIVERED"
-                    ? "completed"
-                    : shipment?.status === "CANCELLED"
-                      ? "cancelled"
-                      : ""
+                  ? "completed"
+                  : shipment?.status === "CANCELLED"
+                    ? "cancelled"
+                    : ""
                   }`}
               >
                 <div className="timeline-dot">
@@ -315,7 +315,7 @@ function Tracking() {
           </section>
         )}
 
-        {!loading && !notFound && <ShipmentMap shipment={shipment} />}
+        {!loading && <ShipmentMap shipment={shipment} />}
 
         {/* DETAILS */}
         <section className="tracking-details-grid">

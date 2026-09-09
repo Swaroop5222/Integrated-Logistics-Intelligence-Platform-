@@ -1,9 +1,19 @@
 package com.shiptrack.entity;
 
-import com.shiptrack.enums.Role;
-import jakarta.persistence.*;
-
 import java.time.LocalDateTime;
+
+import com.shiptrack.enums.Role;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "users")
@@ -32,6 +42,10 @@ public class User {
     @Column(name = "register_id", unique = true, length = 20)
     private String registerId;
 
+    // Kept for compatibility with the existing PostgreSQL schema.
+    @Column(name = "user_code", nullable = false, length = 50)
+    private String userCode;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -43,6 +57,9 @@ public class User {
         LocalDateTime now = LocalDateTime.now();
         createdAt = now;
         updatedAt = now;
+        if (userCode == null || userCode.isBlank()) {
+            userCode = "USR-" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        }
     }
 
     @PreUpdate
@@ -107,6 +124,14 @@ public class User {
 
     public void setRegisterId(String registerId) {
         this.registerId = registerId;
+    }
+
+    public String getUserCode() {
+        return userCode;
+    }
+
+    public void setUserCode(String userCode) {
+        this.userCode = userCode;
     }
 
     public LocalDateTime getCreatedAt() {

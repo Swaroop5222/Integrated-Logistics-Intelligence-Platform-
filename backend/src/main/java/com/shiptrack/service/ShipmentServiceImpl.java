@@ -1,5 +1,15 @@
 package com.shiptrack.service;
 
+import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.shiptrack.dto.ShipmentRequest;
 import com.shiptrack.dto.ShipmentResponse;
 import com.shiptrack.dto.ShipmentStatusHistoryResponse;
@@ -13,14 +23,6 @@ import com.shiptrack.exception.ResourceNotFoundException;
 import com.shiptrack.repository.ShipmentRepository;
 import com.shiptrack.repository.ShipmentStatusHistoryRepository;
 import com.shiptrack.repository.UserRepository;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 public class ShipmentServiceImpl implements ShipmentService {
@@ -30,8 +32,8 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final UserRepository userRepository;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
-                               ShipmentStatusHistoryRepository historyRepository,
-                               UserRepository userRepository) {
+            ShipmentStatusHistoryRepository historyRepository,
+            UserRepository userRepository) {
         this.shipmentRepository = shipmentRepository;
         this.historyRepository = historyRepository;
         this.userRepository = userRepository;
@@ -151,10 +153,13 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     public ShipmentResponse getShipmentByTrackingNumber(String trackingNumber) {
-        User currentUser = getCurrentUser();
         Shipment shipment = shipmentRepository.findByTrackingNumber(trackingNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Shipment not found with tracking number: " + trackingNumber));
-        checkVisibility(shipment, currentUser);
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()
+                && !(authentication instanceof AnonymousAuthenticationToken)) {
+            checkVisibility(shipment, getCurrentUser());
+        }
         return mapToResponse(shipment);
     }
 
