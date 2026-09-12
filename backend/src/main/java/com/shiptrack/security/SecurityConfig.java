@@ -49,6 +49,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**", "/auth/**").permitAll()
+                .requestMatchers("/api/shipments/track/**").permitAll()
+                .requestMatchers("/api/shipments/*/history").permitAll()
                 .requestMatchers("/dashboard/**").permitAll()
                 .anyRequest().authenticated()
             );

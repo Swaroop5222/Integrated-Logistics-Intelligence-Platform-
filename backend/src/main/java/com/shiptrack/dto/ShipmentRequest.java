@@ -1,6 +1,7 @@
 package com.shiptrack.dto;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 public class ShipmentRequest {
 
@@ -13,9 +14,14 @@ public class ShipmentRequest {
     private String receiverName;
     private String receiverPhone;
     private String receiverAddress;
+    private String deliveryAddress;
     private String packageDescription;
     private BigDecimal packageWeightKg;
     private Long assignedOperatorId;
+    private LocalDate expectedDeliveryDate;
+    private String priority;
+    private String transportMode;
+    private LocalDate pickupDate;
 
     public ShipmentRequest() {}
 
@@ -110,8 +116,51 @@ public class ShipmentRequest {
     public Long getAssignedOperatorId() {
         return assignedOperatorId;
     }
-
+     
+    public void setExpectedDeliveryDate(LocalDate expectedDeliveryDate)
+    {
+        this.expectedDeliveryDate=expectedDeliveryDate;
+    }
+    public LocalDate getExpectedDeliveryDate()
+    {
+        return expectedDeliveryDate;
+    }
     public void setAssignedOperatorId(Long assignedOperatorId) {
         this.assignedOperatorId = assignedOperatorId;
+    }
+
+    public String getDeliveryAddress() {
+        return deliveryAddress != null ? deliveryAddress : receiverAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.deliveryAddress = deliveryAddress;
+        if (this.receiverAddress == null) {
+            this.receiverAddress = deliveryAddress;
+        }
+    }
+
+    public String getPriority() {
+        return priority != null ? priority : "Standard";
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
+
+    public String getTransportMode() {
+        return transportMode != null ? transportMode : "Road";
+    }
+
+    public void setTransportMode(String transportMode) {
+        this.transportMode = transportMode;
+    }
+
+    public LocalDate getPickupDate() {
+        return pickupDate;
+    }
+
+    public void setPickupDate(LocalDate pickupDate) {
+        this.pickupDate = pickupDate;
     }
 }

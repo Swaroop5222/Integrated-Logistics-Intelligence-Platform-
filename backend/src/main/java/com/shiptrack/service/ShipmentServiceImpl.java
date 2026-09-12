@@ -1,17 +1,22 @@
 package com.shiptrack.service;
 
+import com.shiptrack.client.DistanceMatrixClient;
+import com.shiptrack.client.GeocodingClient;
+import com.shiptrack.dto.GeoPoint;
 import com.shiptrack.dto.ShipmentRequest;
 import com.shiptrack.dto.ShipmentResponse;
 import com.shiptrack.dto.ShipmentStatusHistoryResponse;
 import com.shiptrack.dto.StatusUpdateRequest;
 import com.shiptrack.entity.Shipment;
 import com.shiptrack.entity.ShipmentStatusHistory;
+import com.shiptrack.entity.Route;
 import com.shiptrack.entity.User;
 import com.shiptrack.enums.Role;
 import com.shiptrack.enums.ShipmentStatus;
 import com.shiptrack.exception.ResourceNotFoundException;
 import com.shiptrack.repository.ShipmentRepository;
 import com.shiptrack.repository.ShipmentStatusHistoryRepository;
+import com.shiptrack.repository.RouteRepository;
 import com.shiptrack.repository.UserRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,13 +34,22 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final ShipmentRepository shipmentRepository;
     private final ShipmentStatusHistoryRepository historyRepository;
     private final UserRepository userRepository;
+    private final RouteRepository routeRepository;
+    private final GeocodingClient geocodingClient;
+    private final DistanceMatrixClient distanceMatrixClient;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ShipmentStatusHistoryRepository historyRepository,
-                               UserRepository userRepository) {
+                               UserRepository userRepository,
+                               RouteRepository routeRepository,
+                               GeocodingClient geocodingClient,
+                               DistanceMatrixClient distanceMatrixClient) {
         this.shipmentRepository = shipmentRepository;
         this.historyRepository = historyRepository;
         this.userRepository = userRepository;
+        this.routeRepository = routeRepository;
+        this.geocodingClient = geocodingClient;
+        this.distanceMatrixClient = distanceMatrixClient;
     }
 
     private User getCurrentUser() {
@@ -126,8 +141,12 @@ public class ShipmentServiceImpl implements ShipmentService {
         shipment.setPackageDescription(request.getPackageDescription());
         shipment.setPackageWeightKg(request.getPackageWeightKg());
         shipment.setStatus(ShipmentStatus.CREATED);
+        shipment.setExpectedDeliveryDate(request.getExpectedDeliveryDate());
+        shipment.setPriority(request.getPriority() != null ? request.getPriority() : "Standard");
+        shipment.setTransportMode(request.getTransportMode() != null ? request.getTransportMode() : "road");
 
         Shipment savedShipment = shipmentRepository.save(shipment);
+        saveInitialRoute(savedShipment);
 
         // Save status history entry
         ShipmentStatusHistory history = new ShipmentStatusHistory();
@@ -138,6 +157,31 @@ public class ShipmentServiceImpl implements ShipmentService {
         historyRepository.save(history);
 
         return mapToResponse(savedShipment);
+    }
+
+    private void saveInitialRoute(Shipment shipment) {
+        if (shipment.getSenderAddress() == null || shipment.getSenderAddress().isBlank()
+                || shipment.getReceiverAddress() == null || shipment.getReceiverAddress().isBlank()) {
+            throw new IllegalArgumentException("Sender and receiver addresses are required to create a route.");
+        }
+
+        GeoPoint origin = geocodingClient.geocode(shipment.getSenderAddress());
+        GeoPoint destination = geocodingClient.geocode(shipment.getReceiverAddress());
+        DistanceMatrixClient.TravelEstimate estimate =
+                distanceMatrixClient.getTravelEstimate(origin, destination);
+
+        Route route = new Route();
+        route.setShipment(shipment);
+        route.setAssignedOperator(shipment.getAssignedOperator());
+        route.setOrigin(shipment.getSenderAddress());
+        route.setDestination(shipment.getReceiverAddress());
+        route.setDistanceKm(BigDecimal.valueOf(estimate.distanceMeters() / 1000.0));
+        route.setEstimatedDurationMinutes((int) Math.ceil(estimate.durationSeconds() / 60.0));
+        route.setOriginLatitude(origin.getLatitude());
+        route.setOriginLongitude(origin.getLongitude());
+        route.setDestinationLatitude(destination.getLatitude());
+        route.setDestinationLongitude(destination.getLongitude());
+        routeRepository.save(route);
     }
 
     @Override
@@ -338,6 +382,10 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         r.setCreatedAt(s.getCreatedAt());
         r.setUpdatedAt(s.getUpdatedAt());
+        r.setExpectedDeliveryDate(s.getExpectedDeliveryDate());
+        r.setPriority(s.getPriority());
+        r.setTransportMode(s.getTransportMode());
+        r.setPickupDate(s.getPickupDate());
         return r;
     }
 }

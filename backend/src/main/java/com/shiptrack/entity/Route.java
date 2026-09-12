@@ -35,6 +35,18 @@ public class Route {
     @Column(name = "estimated_duration_minutes")
     private Integer estimatedDurationMinutes;
 
+    @Column(name = "origin_latitude")
+    private Double originLatitude;
+
+    @Column(name = "origin_longitude")
+    private Double originLongitude;
+
+    @Column(name = "destination_latitude")
+    private Double destinationLatitude;
+
+    @Column(name = "destination_longitude")
+    private Double destinationLongitude;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -111,6 +123,15 @@ public class Route {
     public void setEstimatedDurationMinutes(Integer estimatedDurationMinutes) {
         this.estimatedDurationMinutes = estimatedDurationMinutes;
     }
+
+    public Double getOriginLatitude() { return originLatitude; }
+    public void setOriginLatitude(Double originLatitude) { this.originLatitude = originLatitude; }
+    public Double getOriginLongitude() { return originLongitude; }
+    public void setOriginLongitude(Double originLongitude) { this.originLongitude = originLongitude; }
+    public Double getDestinationLatitude() { return destinationLatitude; }
+    public void setDestinationLatitude(Double destinationLatitude) { this.destinationLatitude = destinationLatitude; }
+    public Double getDestinationLongitude() { return destinationLongitude; }
+    public void setDestinationLongitude(Double destinationLongitude) { this.destinationLongitude = destinationLongitude; }
 
     public LocalDateTime getCreatedAt() {
         return createdAt;

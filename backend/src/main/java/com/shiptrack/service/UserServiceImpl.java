@@ -48,10 +48,35 @@ public class UserServiceImpl implements UserService {
 
         User user = new User();
         user.setFullName(request.getFullName());
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole(request.getRole());
         user.setPhoneNumber(request.getPhoneNumber());
+
+        // Address
+        user.setAddress(request.getAddress());
+        user.setCity(request.getCity());
+        user.setState(request.getState());
+        user.setCountry(request.getCountry());
+        user.setPostalCode(request.getPostalCode());
+
+        // Business Client
+        user.setCompanyName(request.getCompanyName());
+        user.setRegistrationNumber(request.getRegistrationNumber());
+        user.setGstTaxId(request.getGstTaxId());
+        user.setContactPersonName(request.getContactPersonName());
+
+        // Logistics Operator
+        user.setOrganizationName(request.getOrganizationName());
+        user.setLicenseRegistrationNumber(request.getLicenseRegistrationNumber());
+        user.setTransportationMode(request.getTransportationMode());
+        user.setOperatingArea(request.getOperatingArea());
+
+        // Support Agent
+        user.setEmployeeId(request.getEmployeeId());
+        user.setDepartment(request.getDepartment());
 
         // Only BUSINESS_CLIENT accounts automatically receive a Business Client
         // registerId. The client must never supply this value themselves; it is
@@ -101,7 +126,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserDto mapToDto(User user) {
-        return new UserDto(
+        UserDto dto = new UserDto(
                 user.getId(),
                 user.getFullName(),
                 user.getEmail(),
@@ -111,5 +136,21 @@ public class UserServiceImpl implements UserService {
                 user.getCreatedAt(),
                 user.getUpdatedAt()
         );
+        dto.setAddress(user.getAddress());
+        dto.setCity(user.getCity());
+        dto.setState(user.getState());
+        dto.setCountry(user.getCountry());
+        dto.setPostalCode(user.getPostalCode());
+        dto.setCompanyName(user.getCompanyName());
+        dto.setRegistrationNumber(user.getRegistrationNumber());
+        dto.setGstTaxId(user.getGstTaxId());
+        dto.setContactPersonName(user.getContactPersonName());
+        dto.setOrganizationName(user.getOrganizationName());
+        dto.setLicenseRegistrationNumber(user.getLicenseRegistrationNumber());
+        dto.setTransportationMode(user.getTransportationMode());
+        dto.setOperatingArea(user.getOperatingArea());
+        dto.setEmployeeId(user.getEmployeeId());
+        dto.setDepartment(user.getDepartment());
+        return dto;
     }
 }

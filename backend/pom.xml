@@ -28,6 +28,16 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- JSON parsing for external API responses -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Spring Data JPA -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -72,6 +82,7 @@
             <version>0.12.6</version>
             <scope>runtime</scope>
         </dependency>
+       
 
     </dependencies>
 

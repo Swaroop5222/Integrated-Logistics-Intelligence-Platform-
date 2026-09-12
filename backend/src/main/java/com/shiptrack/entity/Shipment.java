@@ -3,7 +3,10 @@ package com.shiptrack.entity;
 import com.shiptrack.enums.ShipmentStatus;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "shipments", indexes = {
@@ -69,6 +72,20 @@ public class Shipment {
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
+
+    @Column(name = "expected_delivery_date")
+    private LocalDate expectedDeliveryDate;
+
+    @Column(length = 50)
+    private String priority = "Standard";
+
+    @Column(name = "transport_mode", length = 50)
+    private String transportMode = "Road";
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ShipmentStatusHistory> statusHistory = new ArrayList<>();
+    @Column(name = "pickup_date")
+    private LocalDate pickupDate;
 
     @PrePersist
     protected void onCreate() {
@@ -208,9 +225,21 @@ public class Shipment {
         this.assignedOperator = assignedOperator;
     }
 
+    public LocalDate getExpectedDeliveryDate() {
+        return expectedDeliveryDate;
+    }
+
+     public void setExpectedDeliveryDate(LocalDate expectedDeliveryDate) {
+        this.expectedDeliveryDate = expectedDeliveryDate;
+    }
+
+
+    
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
+    
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
@@ -222,5 +251,45 @@ public class Shipment {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getPriority() {
+        return priority != null ? priority : "Standard";
+    }
+
+    public void setPriority(String priority) {
+        this.priority = priority;
+    }
+
+    public String getTransportMode() {
+        return transportMode != null ? transportMode : "Road";
+    }
+
+    public void setTransportMode(String transportMode) {
+        this.transportMode = transportMode;
+    }
+
+    public List<ShipmentStatusHistory> getStatusHistory() {
+        return statusHistory;
+    }
+
+    public void setStatusHistory(List<ShipmentStatusHistory> statusHistory) {
+        this.statusHistory = statusHistory;
+    }
+
+    public String getDeliveryAddress() {
+        return receiverAddress;
+    }
+
+    public void setDeliveryAddress(String deliveryAddress) {
+        this.receiverAddress = deliveryAddress;
+    }
+
+    public LocalDate getPickupDate() {
+        return pickupDate;
+    }
+
+    public void setPickupDate(LocalDate pickupDate) {
+        this.pickupDate = pickupDate;
     }
 }

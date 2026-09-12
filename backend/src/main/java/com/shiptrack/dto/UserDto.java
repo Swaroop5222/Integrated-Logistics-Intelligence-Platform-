@@ -10,6 +10,30 @@ public class UserDto {
     private Role role;
     private String registerId;
     private String phoneNumber;
+
+    // Address
+    private String address;
+    private String city;
+    private String state;
+    private String country;
+    private String postalCode;
+
+    // Business
+    private String companyName;
+    private String registrationNumber;
+    private String gstTaxId;
+    private String contactPersonName;
+
+    // Operator
+    private String organizationName;
+    private String licenseRegistrationNumber;
+    private String transportationMode;
+    private String operatingArea;
+
+    // Support
+    private String employeeId;
+    private String department;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -72,6 +96,126 @@ public class UserDto {
 
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
+    }
+
+    public String getAddress() {
+        return address;
+    }
+
+    public void setAddress(String address) {
+        this.address = address;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public void setState(String state) {
+        this.state = state;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
+    }
+
+    public String getPostalCode() {
+        return postalCode;
+    }
+
+    public void setPostalCode(String postalCode) {
+        this.postalCode = postalCode;
+    }
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    public String getRegistrationNumber() {
+        return registrationNumber;
+    }
+
+    public void setRegistrationNumber(String registrationNumber) {
+        this.registrationNumber = registrationNumber;
+    }
+
+    public String getGstTaxId() {
+        return gstTaxId;
+    }
+
+    public void setGstTaxId(String gstTaxId) {
+        this.gstTaxId = gstTaxId;
+    }
+
+    public String getContactPersonName() {
+        return contactPersonName;
+    }
+
+    public void setContactPersonName(String contactPersonName) {
+        this.contactPersonName = contactPersonName;
+    }
+
+    public String getOrganizationName() {
+        return organizationName;
+    }
+
+    public void setOrganizationName(String organizationName) {
+        this.organizationName = organizationName;
+    }
+
+    public String getLicenseRegistrationNumber() {
+        return licenseRegistrationNumber;
+    }
+
+    public void setLicenseRegistrationNumber(String licenseRegistrationNumber) {
+        this.licenseRegistrationNumber = licenseRegistrationNumber;
+    }
+
+    public String getTransportationMode() {
+        return transportationMode;
+    }
+
+    public void setTransportationMode(String transportationMode) {
+        this.transportationMode = transportationMode;
+    }
+
+    public String getOperatingArea() {
+        return operatingArea;
+    }
+
+    public void setOperatingArea(String operatingArea) {
+        this.operatingArea = operatingArea;
+    }
+
+    public String getEmployeeId() {
+        return employeeId;
+    }
+
+    public void setEmployeeId(String employeeId) {
+        this.employeeId = employeeId;
+    }
+
+    public String getDepartment() {
+        return department;
+    }
+
+    public void setDepartment(String department) {
+        this.department = department;
     }
 
     public LocalDateTime getCreatedAt() {

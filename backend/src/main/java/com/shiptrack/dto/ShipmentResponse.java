@@ -2,6 +2,7 @@ package com.shiptrack.dto;
 
 import com.shiptrack.enums.ShipmentStatus;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public class ShipmentResponse {
@@ -26,6 +27,10 @@ public class ShipmentResponse {
     private String assignedOperatorName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDate expectedDeliveryDate;
+    private String priority;
+    private String transportMode;
+    private LocalDate pickupDate;
 
     public ShipmentResponse() {}
 
@@ -187,5 +192,34 @@ public class ShipmentResponse {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+    public LocalDate getExpectedDeliveryDate() {
+        return expectedDeliveryDate;
+    }
+
+    public void setExpectedDeliveryDate(LocalDate expectedDeliveryDate) {
+        this.expectedDeliveryDate = expectedDeliveryDate;
+    }
+    public String getPriority() {
+        return priority;
+    }
+
+    public void setPriority(String priority) {
+      this.priority = priority;
+        
+    }
+    public String getTransportMode() {
+        return transportMode;
+    }
+
+    public void setTransportMode(String transportMode) {
+        this.transportMode = transportMode;
+    }
+
+    public void setPickupDate(Object pickupDate) {
+        this.pickupDate = (LocalDate) pickupDate;
+    }
+    public LocalDate getPickupDate() {
+        return pickupDate;
     }
 }

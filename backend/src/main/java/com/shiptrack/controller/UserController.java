@@ -38,6 +38,21 @@ public class UserController {
                 user.getCreatedAt(),
                 user.getUpdatedAt()
         );
+        dto.setAddress(user.getAddress());
+        dto.setCity(user.getCity());
+        dto.setState(user.getState());
+        dto.setCountry(user.getCountry());
+        dto.setPostalCode(user.getPostalCode());
+        dto.setCompanyName(user.getCompanyName());
+        dto.setRegistrationNumber(user.getRegistrationNumber());
+        dto.setGstTaxId(user.getGstTaxId());
+        dto.setContactPersonName(user.getContactPersonName());
+        dto.setOrganizationName(user.getOrganizationName());
+        dto.setLicenseRegistrationNumber(user.getLicenseRegistrationNumber());
+        dto.setTransportationMode(user.getTransportationMode());
+        dto.setOperatingArea(user.getOperatingArea());
+        dto.setEmployeeId(user.getEmployeeId());
+        dto.setDepartment(user.getDepartment());
         return ResponseEntity.ok(dto);
     }
 }
