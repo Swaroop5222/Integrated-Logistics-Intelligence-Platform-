@@ -6,6 +6,19 @@ import { apiRequest } from "../api";
 function CreateShipment() {
   const navigate = useNavigate();
 
+  // Get currently logged-in user
+  const user = JSON.parse(
+    localStorage.getItem("shiptrackUser") || "null"
+  );
+
+  const userName =
+    user?.fullName ||
+    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+    user?.name ||
+    "Business Client";
+
+  const userInitial = userName.charAt(0).toUpperCase();
+
   const [formData, setFormData] = useState({
     referenceId: "",
     senderName: "",
@@ -38,6 +51,7 @@ function CreateShipment() {
   });
 
   const [message, setMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -52,25 +66,55 @@ function CreateShipment() {
     e.preventDefault();
 
     try {
-      const user = JSON.parse(localStorage.getItem("shiptrackUser") || "null");
+      const loggedInUser = JSON.parse(
+        localStorage.getItem("shiptrackUser") || "null"
+      );
 
-      if (!user?.id || user.role !== "BUSINESS_CLIENT") {
-        alert("Please login as a Business Client before creating a shipment.");
+      if (
+        !loggedInUser?.id ||
+        loggedInUser.role !== "BUSINESS_CLIENT"
+      ) {
+        alert(
+          "Please login as a Business Client before creating a shipment."
+        );
         navigate("/login");
         return;
       }
 
+      setIsSubmitting(true);
+
+      const fullSenderAddress = [
+        formData.senderAddress.trim(),
+        formData.senderCity.trim(),
+        formData.senderState.trim(),
+        formData.senderPincode.trim(),
+      ]
+        .filter(Boolean)
+        .join(", ") || formData.senderAddress.trim();
+
+      const fullReceiverAddress = [
+        formData.receiverAddress.trim(),
+        formData.receiverCity.trim(),
+        formData.receiverState.trim(),
+        formData.receiverPincode.trim(),
+      ]
+        .filter(Boolean)
+        .join(", ") || formData.receiverAddress.trim();
+
       const payload = {
         customerId: null,
         assignedOperatorId: null,
+
         senderName: formData.senderName.trim(),
         senderPhone: formData.senderPhone.trim(),
-        senderAddress: formData.senderAddress.trim(),
+        senderAddress: fullSenderAddress,
+
         receiverName: formData.receiverName.trim(),
         receiverPhone: formData.receiverPhone.trim(),
-        receiverAddress: formData.receiverAddress.trim(),
+        receiverAddress: fullReceiverAddress,
+
         packageDescription: `${formData.packageType} x${formData.quantity}`,
-        packageWeightKg: Number(formData.weight),
+        packageWeightKg: Number(formData.weight) || 1,
       };
 
       const data = await apiRequest("/api/shipments", {
@@ -88,15 +132,15 @@ function CreateShipment() {
     } catch (error) {
       console.error("Create shipment error:", error);
       setMessage(`Error: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
-  };;
+  };
 
   return (
     <div className="create-shipment-page">
 
-      {/* =================================
-          SIDEBAR
-      ================================= */}
+      {/* SIDEBAR */}
 
       <aside className="create-sidebar">
 
@@ -113,11 +157,9 @@ function CreateShipment() {
 
         </div>
 
-
         <div className="create-menu-title">
           BUSINESS CLIENT
         </div>
-
 
         <nav className="create-navigation">
 
@@ -211,7 +253,6 @@ function CreateShipment() {
 
         </nav>
 
-
         <Link
           to="/login"
           className="create-logout"
@@ -222,9 +263,7 @@ function CreateShipment() {
       </aside>
 
 
-      {/* =================================
-          MAIN
-      ================================= */}
+      {/* MAIN */}
 
       <main className="create-main">
 
@@ -249,14 +288,16 @@ function CreateShipment() {
           </div>
 
 
+          {/* DYNAMIC USER PROFILE */}
+
           <div className="create-profile">
 
             <div className="create-avatar">
-              R
+              {userInitial}
             </div>
 
             <div>
-              <strong>Rekha Patil</strong>
+              <strong>{userName}</strong>
               <span>Business Client</span>
             </div>
 
@@ -275,18 +316,14 @@ function CreateShipment() {
         )}
 
 
-        {/* =================================
-            FORM
-        ================================= */}
+        {/* FORM */}
 
         <form
           className="shipment-form"
           onSubmit={handleSubmit}
         >
 
-          {/* =================================
-              SHIPMENT DETAILS
-          ================================= */}
+          {/* SHIPMENT DETAILS */}
 
           <section className="form-section">
 
@@ -309,7 +346,6 @@ function CreateShipment() {
               </div>
 
             </div>
-
 
             <div className="form-grid one-column">
 
@@ -336,9 +372,7 @@ function CreateShipment() {
           </section>
 
 
-          {/* =================================
-              SENDER
-          ================================= */}
+          {/* SENDER */}
 
           <section className="form-section">
 
@@ -362,7 +396,6 @@ function CreateShipment() {
 
             </div>
 
-
             <div className="form-grid">
 
               <div className="form-field">
@@ -383,7 +416,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -402,7 +434,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -418,7 +449,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -438,7 +468,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field full-width">
 
                 <label>
@@ -457,7 +486,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -475,7 +503,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -500,9 +527,7 @@ function CreateShipment() {
           </section>
 
 
-          {/* =================================
-              RECEIVER
-          ================================= */}
+          {/* RECEIVER */}
 
           <section className="form-section">
 
@@ -526,7 +551,6 @@ function CreateShipment() {
 
             </div>
 
-
             <div className="form-grid">
 
               <div className="form-field">
@@ -547,7 +571,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -566,7 +589,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -582,7 +604,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -602,7 +623,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field full-width">
 
                 <label>
@@ -621,7 +641,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -639,7 +658,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -664,9 +682,7 @@ function CreateShipment() {
           </section>
 
 
-          {/* =================================
-              PACKAGE
-          ================================= */}
+          {/* PACKAGE */}
 
           <section className="form-section">
 
@@ -690,7 +706,6 @@ function CreateShipment() {
 
             </div>
 
-
             <div className="form-grid">
 
               <div className="form-field">
@@ -712,7 +727,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -728,7 +742,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -750,7 +763,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -768,7 +780,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -785,7 +796,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -809,9 +819,7 @@ function CreateShipment() {
           </section>
 
 
-          {/* =================================
-              DELIVERY
-          ================================= */}
+          {/* DELIVERY */}
 
           <section className="form-section">
 
@@ -835,7 +843,6 @@ function CreateShipment() {
 
             </div>
 
-
             <div className="form-grid">
 
               <div className="form-field">
@@ -855,7 +862,6 @@ function CreateShipment() {
 
               </div>
 
-
               <div className="form-field">
 
                 <label>
@@ -872,7 +878,6 @@ function CreateShipment() {
                 />
 
               </div>
-
 
               <div className="form-field">
 
@@ -899,7 +904,6 @@ function CreateShipment() {
                 </select>
 
               </div>
-
 
               <div className="form-field">
 
@@ -936,9 +940,7 @@ function CreateShipment() {
           </section>
 
 
-          {/* =================================
-              ACTIONS
-          ================================= */}
+          {/* ACTIONS */}
 
           <div className="form-actions">
 
@@ -952,8 +954,19 @@ function CreateShipment() {
             <button
               type="submit"
               className="submit-shipment-btn"
+              disabled={isSubmitting}
+              style={
+                isSubmitting
+                  ? {
+                      opacity: 0.7,
+                      cursor: "not-allowed",
+                    }
+                  : {}
+              }
             >
-              Create Shipment →
+              {isSubmitting
+                ? "Creating Shipment..."
+                : "Create Shipment →"}
             </button>
 
           </div>

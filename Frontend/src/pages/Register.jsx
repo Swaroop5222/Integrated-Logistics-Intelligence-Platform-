@@ -10,6 +10,8 @@ import {
   User,
   UserPlus,
   Truck,
+  Building2,
+  MapPin,
 } from "lucide-react";
 
 import { Link, useNavigate } from "react-router-dom";
@@ -23,8 +25,10 @@ function Register() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
+    // Common
     firstName: "",
     lastName: "",
     email: "",
@@ -32,6 +36,13 @@ function Register() {
     password: "",
     confirmPassword: "",
     role: "",
+
+    // Address
+    address: "",
+    city: "",
+    state: "",
+    country: "",
+    postalCode: "",
 
     // Business Client
     companyName: "",
@@ -64,26 +75,269 @@ function Register() {
   };
 
   // =========================================================
-  // ROLE-SPECIFIC FIELDS
+  // ROLE SPECIFIC FIELDS
   // =========================================================
 
   const renderRoleSpecificFields = () => {
-    // ---------------------------------------------------------
-    // BUSINESS CLIENT
-    // ---------------------------------------------------------
 
-    if (formData.role === "business") {
-      return (
-        <div className="auth-role-fields">
+  if (formData.role === "business") {
+    return (
+      <div className="auth-role-fields">
+
+        <div className="auth-field">
+          <label>Company Name</label>
+
+          <div className="auth-input-wrapper">
+            <Building2 size={17} />
+
+            <input
+              type="text"
+              name="companyName"
+              placeholder="Enter company name"
+              value={formData.companyName}
+              onChange={handleChange}
+            />
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>Registration Number</label>
+
+          <div className="auth-input-wrapper">
+            <input
+              type="text"
+              name="registrationNumber"
+              placeholder="Enter registration number"
+              value={formData.registrationNumber}
+              onChange={handleChange}
+            />
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>GST / Tax ID</label>
+
+          <div className="auth-input-wrapper">
+            <input
+              type="text"
+              name="gstTaxId"
+              placeholder="Enter GST / Tax ID"
+              value={formData.gstTaxId}
+              onChange={handleChange}
+            />
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>Contact Person Name</label>
+
+          <div className="auth-input-wrapper">
+            <User size={17} />
+
+            <input
+              type="text"
+              name="contactPersonName"
+              placeholder="Enter contact person name"
+              value={formData.contactPersonName}
+              onChange={handleChange}
+            />
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+
+  if (formData.role === "operator") {
+    return (
+      <div className="auth-role-fields">
+
+        <div className="auth-field">
+          <label>Organization Name</label>
+
+          <div className="auth-input-wrapper">
+            <Building2 size={17} />
+
+            <input
+              type="text"
+              name="organizationName"
+              placeholder="Enter organization name"
+              value={formData.organizationName}
+              onChange={handleChange}
+            />
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>License / Registration Number</label>
+
+          <div className="auth-input-wrapper">
+
+            <input
+              type="text"
+              name="licenseRegistrationNumber"
+              placeholder="Enter license / registration number"
+              value={formData.licenseRegistrationNumber}
+              onChange={handleChange}
+            />
+
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>Transportation Mode</label>
+
+          <div className="auth-select-wrapper">
+
+            <Truck size={17} />
+
+            <select
+              name="transportationMode"
+              value={formData.transportationMode}
+              onChange={handleChange}
+            >
+              <option value="">
+                Select transportation mode
+              </option>
+
+              <option value="road">Road</option>
+              <option value="rail">Rail</option>
+              <option value="air">Air</option>
+              <option value="sea">Sea</option>
+              <option value="multimodal">
+                Multimodal
+              </option>
+
+            </select>
+
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>Operating Area</label>
+
+          <div className="auth-input-wrapper">
+
+            <MapPin size={17} />
+
+            <input
+              type="text"
+              name="operatingArea"
+              placeholder="Enter operating area"
+              value={formData.operatingArea}
+              onChange={handleChange}
+            />
+
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+
+  if (formData.role === "support") {
+    return (
+      <div className="auth-role-fields">
+
+        <div className="auth-field">
+          <label>Employee ID</label>
+
+          <div className="auth-input-wrapper">
+
+            <User size={17} />
+
+            <input
+              type="text"
+              name="employeeId"
+              placeholder="Enter employee ID"
+              value={formData.employeeId}
+              onChange={handleChange}
+            />
+
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>Organization Name</label>
+
+          <div className="auth-input-wrapper">
+
+            <Building2 size={17} />
+
+            <input
+              type="text"
+              name="organizationName"
+              placeholder="Enter organization name"
+              value={formData.organizationName}
+              onChange={handleChange}
+            />
+
+          </div>
+        </div>
+
+        <div className="auth-field">
+          <label>Department</label>
+
+          <div className="auth-input-wrapper">
+
+            <input
+              type="text"
+              name="department"
+              placeholder="Enter department"
+              value={formData.department}
+              onChange={handleChange}
+            />
+
+          </div>
+        </div>
+
+      </div>
+    );
+  }
+
+
+  return null;
+};
+  // =========================================================
+  // ADDRESS FIELDS
+  // =========================================================
+
+  const renderAddressFields = () => {
+    if (!formData.role) {
+      return null;
+    }
+
+    return (
+      <div className="auth-role-fields">
+        <div className="auth-field">
+          <label>Address</label>
+
+          <div className="auth-input-wrapper">
+            <MapPin size={17} />
+
+            <input
+              type="text"
+              name="address"
+              placeholder="Enter address"
+              value={formData.address}
+              onChange={handleChange}
+              required
+            />
+          </div>
+        </div>
+
+        <div className="auth-row">
           <div className="auth-field">
-            <label>Company Name</label>
+            <label>City</label>
 
             <div className="auth-input-wrapper">
               <input
                 type="text"
-                name="companyName"
-                placeholder="Enter company name"
-                value={formData.companyName}
+                name="city"
+                placeholder="Enter city"
+                value={formData.city}
                 onChange={handleChange}
                 required
               />
@@ -91,71 +345,31 @@ function Register() {
           </div>
 
           <div className="auth-field">
-            <label>Registration Number</label>
+            <label>State</label>
 
             <div className="auth-input-wrapper">
               <input
                 type="text"
-                name="registrationNumber"
-                placeholder="Enter registration number"
-                value={formData.registrationNumber}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="auth-field">
-            <label>GST / Tax ID</label>
-
-            <div className="auth-input-wrapper">
-              <input
-                type="text"
-                name="gstTaxId"
-                placeholder="Enter GST / Tax ID"
-                value={formData.gstTaxId}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="auth-field">
-            <label>Contact Person Name</label>
-
-            <div className="auth-input-wrapper">
-              <User size={17} />
-
-              <input
-                type="text"
-                name="contactPersonName"
-                placeholder="Enter contact person name"
-                value={formData.contactPersonName}
+                name="state"
+                placeholder="Enter state"
+                value={formData.state}
                 onChange={handleChange}
                 required
               />
             </div>
           </div>
         </div>
-      );
-    }
 
-    // ---------------------------------------------------------
-    // LOGISTICS OPERATOR
-    // ---------------------------------------------------------
-
-    if (formData.role === "operator") {
-      return (
-        <div className="auth-role-fields">
+        <div className="auth-row">
           <div className="auth-field">
-            <label>Organization Name</label>
+            <label>Country</label>
 
             <div className="auth-input-wrapper">
               <input
                 type="text"
-                name="organizationName"
-                placeholder="Enter organization name"
-                value={formData.organizationName}
+                name="country"
+                placeholder="Enter country"
+                value={formData.country}
                 onChange={handleChange}
                 required
               />
@@ -163,106 +377,22 @@ function Register() {
           </div>
 
           <div className="auth-field">
-            <label>License Registration Number</label>
+            <label>Postal Code</label>
 
             <div className="auth-input-wrapper">
               <input
                 type="text"
-                name="licenseRegistrationNumber"
-                placeholder="Enter license registration number"
-                value={formData.licenseRegistrationNumber}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="auth-field">
-            <label>Transportation Mode</label>
-
-            <div className="auth-select-wrapper">
-              <Truck size={17} />
-
-              <select
-                name="transportationMode"
-                value={formData.transportationMode}
-                onChange={handleChange}
-                required
-              >
-                <option value="">
-                  Select transportation mode
-                </option>
-
-                <option value="road">Road</option>
-                <option value="rail">Rail</option>
-                <option value="air">Air</option>
-                <option value="sea">Sea</option>
-                <option value="multimodal">
-                  Multimodal
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <div className="auth-field">
-            <label>Operating Area</label>
-
-            <div className="auth-input-wrapper">
-              <input
-                type="text"
-                name="operatingArea"
-                placeholder="Enter operating area"
-                value={formData.operatingArea}
+                name="postalCode"
+                placeholder="Enter postal code"
+                value={formData.postalCode}
                 onChange={handleChange}
                 required
               />
             </div>
           </div>
         </div>
-      );
-    }
-
-    // ---------------------------------------------------------
-    // SUPPORT AGENT
-    // ---------------------------------------------------------
-
-    if (formData.role === "support") {
-      return (
-        <div className="auth-role-fields">
-          <div className="auth-field">
-            <label>Employee ID</label>
-
-            <div className="auth-input-wrapper">
-              <input
-                type="text"
-                name="employeeId"
-                placeholder="Enter employee ID"
-                value={formData.employeeId}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="auth-field">
-            <label>Department</label>
-
-            <div className="auth-input-wrapper">
-              <input
-                type="text"
-                name="department"
-                placeholder="Enter department"
-                value={formData.department}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
+      </div>
+    );
   };
 
   // =========================================================
@@ -278,11 +408,11 @@ function Register() {
     const mobile = formData.mobile.trim();
     const password = formData.password;
     const confirmPassword = formData.confirmPassword;
-    const selectedRole = formData.role;
+    const role = formData.role;
 
-    // ---------------------------------------------------------
+    // -------------------------------------------------------
     // BASIC VALIDATION
-    // ---------------------------------------------------------
+    // -------------------------------------------------------
 
     if (!firstName || !lastName) {
       alert("Please enter your first name and last name.");
@@ -290,7 +420,7 @@ function Register() {
     }
 
     if (!email) {
-      alert("Please enter your email address.");
+      alert("Please enter your email.");
       return;
     }
 
@@ -309,14 +439,29 @@ function Register() {
       return;
     }
 
-    if (!selectedRole) {
+    if (!role) {
       alert("Please select your role.");
       return;
     }
 
-    // ---------------------------------------------------------
-    // FRONTEND ROLE -> BACKEND ROLE
-    // ---------------------------------------------------------
+    // -------------------------------------------------------
+    // ADDRESS VALIDATION
+    // -------------------------------------------------------
+
+    if (
+      !formData.address.trim() ||
+      !formData.city.trim() ||
+      !formData.state.trim() ||
+      !formData.country.trim() ||
+      !formData.postalCode.trim()
+    ) {
+      alert("Please complete all address fields.");
+      return;
+    }
+
+    // -------------------------------------------------------
+    // ROLE MAP
+    // -------------------------------------------------------
 
     const roleMap = {
       customer: "CUSTOMER",
@@ -325,18 +470,18 @@ function Register() {
       support: "SUPPORT_AGENT",
     };
 
-    const backendRole = roleMap[selectedRole];
+    const backendRole = roleMap[role];
 
     if (!backendRole) {
-      alert("Invalid role selected.");
+      alert("Please select a valid registration role.");
       return;
     }
 
-    // ---------------------------------------------------------
-    // BUSINESS VALIDATION
-    // ---------------------------------------------------------
+    // -------------------------------------------------------
+    // ROLE VALIDATION
+    // -------------------------------------------------------
 
-    if (selectedRole === "business") {
+    if (role === "business") {
       if (
         !formData.companyName.trim() ||
         !formData.registrationNumber.trim() ||
@@ -348,31 +493,22 @@ function Register() {
       }
     }
 
-    // ---------------------------------------------------------
-    // LOGISTICS OPERATOR VALIDATION
-    // ---------------------------------------------------------
-
-    if (selectedRole === "operator") {
+    if (role === "operator") {
       if (
         !formData.organizationName.trim() ||
         !formData.licenseRegistrationNumber.trim() ||
         !formData.transportationMode ||
         !formData.operatingArea.trim()
       ) {
-        alert(
-          "Please complete all Logistics Operator fields."
-        );
+        alert("Please complete all Logistics Operator fields.");
         return;
       }
     }
 
-    // ---------------------------------------------------------
-    // SUPPORT AGENT VALIDATION
-    // ---------------------------------------------------------
-
-    if (selectedRole === "support") {
+    if (role === "support") {
       if (
         !formData.employeeId.trim() ||
+        !formData.organizationName.trim() ||
         !formData.department.trim()
       ) {
         alert("Please complete all Support Agent fields.");
@@ -380,82 +516,58 @@ function Register() {
       }
     }
 
-    // ---------------------------------------------------------
-    // SEND DATA TO SPRING BOOT
-    // ---------------------------------------------------------
+    // -------------------------------------------------------
+    // SEND TO BACKEND
+    // -------------------------------------------------------
 
+    setIsSubmitting(true);
     try {
-      const response = await apiRequest(
-        "/api/auth/register",
-        {
-          method: "POST",
+      await apiRequest("/api/auth/register", {
+        method: "POST",
 
-          body: JSON.stringify({
-            fullName: `${firstName} ${lastName}`,
-            email: email,
-            password: password,
-            role: backendRole,
-            phoneNumber: mobile,
+        body: JSON.stringify({
+          // Common
+          firstName,
+          lastName,
+          fullName: `${firstName} ${lastName}`,
+          email,
+          password,
+          confirmPassword,
+          role: backendRole,
+          phoneNumber: mobile,
 
-            // Business fields
-            companyName:
-              selectedRole === "business"
-                ? formData.companyName.trim()
-                : null,
+          // Address
+          address: formData.address.trim(),
+          city: formData.city.trim(),
+          state: formData.state.trim(),
+          country: formData.country.trim(),
+          postalCode: formData.postalCode.trim(),
 
-            registrationNumber:
-              selectedRole === "business"
-                ? formData.registrationNumber.trim()
-                : null,
+          // Business Client
+          companyName: formData.companyName.trim(),
+          registrationNumber:
+            formData.registrationNumber.trim(),
+          gstTaxId: formData.gstTaxId.trim(),
+          contactPersonName:
+            formData.contactPersonName.trim(),
 
-            gstTaxId:
-              selectedRole === "business"
-                ? formData.gstTaxId.trim()
-                : null,
+          // Logistics Operator
+          organizationName:
+            formData.organizationName.trim(),
+          licenseRegistrationNumber:
+            formData.licenseRegistrationNumber.trim(),
+          transportationMode:
+            formData.transportationMode,
+          operatingArea:
+            formData.operatingArea.trim(),
 
-            contactPersonName:
-              selectedRole === "business"
-                ? formData.contactPersonName.trim()
-                : null,
+          // Support Agent
+          employeeId: formData.employeeId.trim(),
+          department: formData.department.trim(),
+        }),
+      });
 
-            // Operator fields
-            organizationName:
-              selectedRole === "operator"
-                ? formData.organizationName.trim()
-                : null,
-
-            licenseRegistrationNumber:
-              selectedRole === "operator"
-                ? formData.licenseRegistrationNumber.trim()
-                : null,
-
-            transportationMode:
-              selectedRole === "operator"
-                ? formData.transportationMode
-                : null,
-
-            operatingArea:
-              selectedRole === "operator"
-                ? formData.operatingArea.trim()
-                : null,
-
-            // Support fields
-            employeeId:
-              selectedRole === "support"
-                ? formData.employeeId.trim()
-                : null,
-
-            department:
-              selectedRole === "support"
-                ? formData.department.trim()
-                : null,
-          }),
-        }
-      );
-
-      console.log("Registration response:", response);
-
-      // Registration does NOT automatically login
+      // Remove old login session
       localStorage.removeItem("shiptrackToken");
       localStorage.removeItem("shiptrackUser");
 
@@ -469,8 +581,10 @@ function Register() {
 
       alert(
         error.message ||
-          "Registration failed. Please check the backend."
+          "Unable to connect to backend."
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -481,9 +595,12 @@ function Register() {
   return (
     <div className="auth-page">
       <div className="auth-background"></div>
+
       <div className="auth-overlay"></div>
 
-      {/* NAVBAR */}
+      {/* =====================================================
+          NAVBAR
+      ===================================================== */}
 
       <header className="auth-navbar">
         <Link to="/" className="auth-brand">
@@ -507,11 +624,14 @@ function Register() {
         </Link>
       </header>
 
-      {/* MAIN */}
+      {/* =====================================================
+          MAIN
+      ===================================================== */}
 
       <main className="auth-container">
-
-        {/* LEFT SIDE */}
+        {/* ===================================================
+            LEFT SIDE
+        =================================================== */}
 
         <section className="auth-info">
           <div className="auth-tag">
@@ -532,7 +652,6 @@ function Register() {
           </p>
 
           <div className="auth-features">
-
             <div className="auth-feature">
               <div className="auth-feature-icon orange">
                 <Truck size={17} />
@@ -566,14 +685,14 @@ function Register() {
                 </small>
               </div>
             </div>
-
           </div>
         </section>
 
-        {/* REGISTER CARD */}
+        {/* ===================================================
+            REGISTER CARD
+        =================================================== */}
 
         <section className="auth-card">
-
           <div className="auth-card-header">
             <div className="auth-card-icon">
               <UserPlus size={20} />
@@ -588,10 +707,11 @@ function Register() {
             </div>
           </div>
 
-          {/* FORM */}
+          {/* =================================================
+              FORM
+          ================================================= */}
 
           <form onSubmit={handleSubmit}>
-
             {/* FIRST + LAST NAME */}
 
             <div
@@ -757,40 +877,48 @@ function Register() {
               <label>Register As</label>
 
               <div className="auth-select-wrapper">
-                <ShieldCheck size={17} />
+  <ShieldCheck size={17} />
 
-                <select
-                  name="role"
-                  value={formData.role}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="">
-                    Select your role
-                  </option>
+  <select
+    name="role"
+    value={formData.role}
+    onChange={handleChange}
+    required
+  >
+    <option value="">
+      Select your role
+    </option>
 
-                  <option value="customer">
-                    Customer
-                  </option>
+    <option value="customer">
+      Customer
+    </option>
 
-                  <option value="business">
-                    Business Client
-                  </option>
+    <option value="business">
+      Business Client
+    </option>
 
-                  <option value="operator">
-                    Logistics Operator
-                  </option>
+    <option value="operator">
+      Logistics Operator
+    </option>
 
-                  <option value="support">
-                    Support Agent
-                  </option>
-                </select>
-              </div>
-            </div>
+    <option value="support">
+      Support Agent
+    </option>
+</select>
+</div>
+</div>
 
-            {/* ROLE-SPECIFIC FIELDS */}
+            {/* =================================================
+                ROLE SPECIFIC FIELDS
+            ================================================= */}
 
             {renderRoleSpecificFields()}
+
+            {/* =================================================
+                ADDRESS FIELDS
+            ================================================= */}
+
+            {renderAddressFields()}
 
             {/* TERMS */}
 
@@ -818,14 +946,18 @@ function Register() {
             <button
               type="submit"
               className="auth-submit"
+              disabled={isSubmitting}
+              style={isSubmitting ? { opacity: 0.7, cursor: "not-allowed" } : {}}
             >
-              Create Account
+              {isSubmitting ? "Creating Account..." : "Create Account"}
 
               <ArrowRight size={18} />
             </button>
           </form>
 
-          {/* LOGIN */}
+          {/* =================================================
+              LOGIN
+          ================================================= */}
 
           <div className="auth-divider">
             <span>
@@ -840,7 +972,6 @@ function Register() {
               Sign in
             </Link>
           </p>
-
         </section>
       </main>
     </div>

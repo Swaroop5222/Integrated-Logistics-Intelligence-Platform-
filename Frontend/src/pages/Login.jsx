@@ -21,6 +21,7 @@ function Login() {
   const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -71,6 +72,7 @@ function Login() {
 
     const backendRole = roleMap[selectedRole];
 
+    setIsSubmitting(true);
     try {
       const data = await apiRequest("/api/auth/login", {
         method: "POST",
@@ -90,7 +92,7 @@ function Login() {
       localStorage.setItem(
         "shiptrackUser",
         JSON.stringify({
-          id: data.userId,
+          id: data.id || data.userId,
           email: data.email,
           role: data.role,
         })
@@ -108,8 +110,10 @@ function Login() {
     } catch (error) {
       console.error("Login error:", error);
       alert(error.message || "Unable to connect to backend.");
+    } finally {
+      setIsSubmitting(false);
     }
-  };;
+  };
 
 
   return (
@@ -453,9 +457,11 @@ function Login() {
             <button
               type="submit"
               className="auth-submit"
+              disabled={isSubmitting}
+              style={isSubmitting ? { opacity: 0.7, cursor: "not-allowed" } : {}}
             >
 
-              Sign In
+              {isSubmitting ? "Signing In..." : "Sign In"}
 
               <ArrowRight size={18} />
 

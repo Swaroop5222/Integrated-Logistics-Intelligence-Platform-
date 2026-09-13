@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import "./BusinessTracking.css";
+import { apiRequest } from "../api";
 
 function BusinessTracking() {
   const [searchParams] = useSearchParams();
@@ -11,6 +12,7 @@ function BusinessTracking() {
   const [trackingNumber, setTrackingNumber] = useState(initialTracking);
   const [searchedTracking, setSearchedTracking] =
     useState(initialTracking);
+  const [liveShipment, setLiveShipment] = useState(null);
 
   const shipmentData = {
     "TRK-2026-101": {
@@ -151,7 +153,87 @@ function BusinessTracking() {
     },
   };
 
+  useEffect(() => {
+    let active = true;
+
+    async function fetchLiveShipment() {
+      if (!searchedTracking.trim()) return;
+
+      try {
+        const data = await apiRequest(
+          `/api/shipments/track/${encodeURIComponent(searchedTracking.trim())}`
+        );
+
+        if (active && data) {
+          const statusStr = String(data.status || "CREATED").replaceAll("_", " ");
+          const progressVal =
+            data.status === "DELIVERED"
+              ? 100
+              : data.status === "OUT_FOR_DELIVERY"
+              ? 85
+              : data.status === "IN_TRANSIT"
+              ? 60
+              : data.status === "PICKED_UP"
+              ? 35
+              : data.status === "CANCELLED"
+              ? 0
+              : 15;
+
+          setLiveShipment({
+            order: `SHIP-${data.id}`,
+            customer: data.customerName || data.receiverName || "Client Customer",
+            origin: data.senderAddress || "Hyderabad",
+            destination: data.receiverAddress || "Destination Hub",
+            currentLocation:
+              data.status === "DELIVERED"
+                ? data.receiverAddress
+                : data.status === "CANCELLED"
+                ? "Cancelled"
+                : "In Transit / Hub",
+            status: statusStr,
+            progress: progressVal,
+            eta: data.updatedAt ? new Date(data.updatedAt).toLocaleDateString() : "Pending",
+            pickup: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : "Pending",
+            weight: `${data.packageWeightKg || 1} kg`,
+            packageType: data.packageDescription || "Box",
+            quantity: 1,
+            driver: data.assignedOperatorName || "Operations Logistics",
+            vehicle: "Fleet Transport",
+            mode: "Road Transport",
+            events: [
+              {
+                date: data.updatedAt ? new Date(data.updatedAt).toLocaleDateString() : "Today",
+                time: data.updatedAt ? new Date(data.updatedAt).toLocaleTimeString() : "",
+                title: `Status: ${statusStr}`,
+                location: data.receiverAddress || "Logistics Network",
+                active: true,
+              },
+              {
+                date: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : "Today",
+                time: data.createdAt ? new Date(data.createdAt).toLocaleTimeString() : "",
+                title: "Shipment registered",
+                location: data.senderAddress || "Client Portal",
+                active: false,
+              },
+            ],
+          });
+        }
+      } catch {
+        if (active) {
+          setLiveShipment(null);
+        }
+      }
+    }
+
+    fetchLiveShipment();
+
+    return () => {
+      active = false;
+    };
+  }, [searchedTracking]);
+
   const shipment =
+    liveShipment ||
     shipmentData[searchedTracking] ||
     shipmentData["TRK-2026-101"];
 

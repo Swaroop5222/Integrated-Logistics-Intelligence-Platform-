@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "./BusinessDashboard.css";
 
@@ -37,16 +38,42 @@ const shipments = [
 ];
 
 function BusinessDashboard() {
+
+  // Get logged-in user from localStorage
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem("shiptrackUser");
+
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error("Invalid user data:", error);
+      }
+    }
+  }, []);
+
+  // Get user's registered name
+  const userName =
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    "Business Client";
+
+  // First name for greeting
+  const firstName = userName.split(" ")[0];
+
+  // First letter for avatar
+  const avatarLetter = userName.charAt(0).toUpperCase();
+
   return (
     <div className="business-dashboard">
 
-      {/* =====================================
-          SIDEBAR
-      ===================================== */}
+      {/* SIDEBAR */}
 
       <aside className="business-sidebar">
 
-        {/* LOGO */}
         <div className="business-logo">
           <div className="business-logo-icon">S</div>
 
@@ -56,7 +83,6 @@ function BusinessDashboard() {
           </div>
         </div>
 
-        {/* MENU */}
         <div className="business-menu-title">
           MAIN MENU
         </div>
@@ -153,7 +179,6 @@ function BusinessDashboard() {
 
         </nav>
 
-        {/* BOTTOM */}
         <div className="business-sidebar-bottom">
 
           <Link
@@ -168,9 +193,7 @@ function BusinessDashboard() {
       </aside>
 
 
-      {/* =====================================
-          MAIN CONTENT
-      ===================================== */}
+      {/* MAIN */}
 
       <main className="business-main">
 
@@ -185,7 +208,7 @@ function BusinessDashboard() {
             </div>
 
             <h1>
-              Good afternoon, Rekha
+              Good afternoon, {firstName}
             </h1>
 
             <p>
@@ -196,8 +219,6 @@ function BusinessDashboard() {
 
 
           <div className="business-header-right">
-
-            {/* NOTIFICATION */}
 
             <Link
               to="/business/notifications"
@@ -213,13 +234,13 @@ function BusinessDashboard() {
             <div className="business-profile">
 
               <div className="business-avatar">
-                R
+                {avatarLetter}
               </div>
 
               <div className="business-profile-info">
 
                 <strong>
-                  Rekha Patil
+                  {userName}
                 </strong>
 
                 <small>
@@ -239,9 +260,7 @@ function BusinessDashboard() {
         </header>
 
 
-        {/* =====================================
-            QUICK ACTION
-        ===================================== */}
+        {/* QUICK ACTION */}
 
         <section className="business-quick-action">
 
@@ -272,9 +291,7 @@ function BusinessDashboard() {
         </section>
 
 
-        {/* =====================================
-            STAT CARDS
-        ===================================== */}
+        {/* STAT CARDS */}
 
         <section className="business-stats">
 
@@ -284,20 +301,14 @@ function BusinessDashboard() {
           >
 
             <div className="business-stat-top">
-
-              <span>
-                TOTAL SHIPMENTS
-              </span>
+              <span>TOTAL SHIPMENTS</span>
 
               <div className="stat-icon orange">
                 ▣
               </div>
-
             </div>
 
-            <strong>
-              128
-            </strong>
+            <strong>128</strong>
 
             <small>
               ↑ 12.4% compared to last month
@@ -312,20 +323,14 @@ function BusinessDashboard() {
           >
 
             <div className="business-stat-top">
-
-              <span>
-                IN TRANSIT
-              </span>
+              <span>IN TRANSIT</span>
 
               <div className="stat-icon purple">
                 →
               </div>
-
             </div>
 
-            <strong>
-              32
-            </strong>
+            <strong>32</strong>
 
             <small>
               Currently moving
@@ -340,20 +345,14 @@ function BusinessDashboard() {
           >
 
             <div className="business-stat-top">
-
-              <span>
-                DELIVERED
-              </span>
+              <span>DELIVERED</span>
 
               <div className="stat-icon green">
                 ✓
               </div>
-
             </div>
 
-            <strong>
-              87
-            </strong>
+            <strong>87</strong>
 
             <small>
               94.2% successful deliveries
@@ -368,20 +367,14 @@ function BusinessDashboard() {
           >
 
             <div className="business-stat-top">
-
-              <span>
-                DELAYED
-              </span>
+              <span>DELAYED</span>
 
               <div className="stat-icon pink">
                 !
               </div>
-
             </div>
 
-            <strong>
-              09
-            </strong>
+            <strong>09</strong>
 
             <small>
               7.0% of total shipments
@@ -392,14 +385,9 @@ function BusinessDashboard() {
         </section>
 
 
-        {/* =====================================
-            MAIN GRID
-        ===================================== */}
+        {/* RECENT SHIPMENTS */}
 
         <section className="business-content-grid">
-
-
-          {/* RECENT SHIPMENTS */}
 
           <div className="business-panel shipments-panel">
 
@@ -605,12 +593,9 @@ function BusinessDashboard() {
         </section>
 
 
-        {/* =====================================
-            ANALYTICS ROW
-        ===================================== */}
+        {/* ANALYTICS */}
 
         <section className="business-analytics-grid">
-
 
           {/* DELAY ANALYSIS */}
 
@@ -664,10 +649,12 @@ function BusinessDashboard() {
                   </span>
 
                   <div className="delay-track">
+
                     <div
                       className="delay-value"
                       style={{ width: "72%" }}
                     ></div>
+
                   </div>
 
                   <strong>
@@ -684,10 +671,12 @@ function BusinessDashboard() {
                   </span>
 
                   <div className="delay-track">
+
                     <div
                       className="delay-value"
                       style={{ width: "48%" }}
                     ></div>
+
                   </div>
 
                   <strong>
@@ -704,10 +693,12 @@ function BusinessDashboard() {
                   </span>
 
                   <div className="delay-track">
+
                     <div
                       className="delay-value"
                       style={{ width: "34%" }}
                     ></div>
+
                   </div>
 
                   <strong>
@@ -914,9 +905,7 @@ function BusinessDashboard() {
         </section>
 
 
-        {/* =====================================
-            REPORTS
-        ===================================== */}
+        {/* REPORTS */}
 
         <section className="business-report-banner">
 

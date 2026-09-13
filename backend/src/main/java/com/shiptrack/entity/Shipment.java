@@ -21,6 +21,9 @@ public class Shipment {
     @Column(name = "tracking_number", nullable = false, unique = true, length = 30)
     private String trackingNumber;
 
+    @Column(name = "reference_id", length = 100)
+    private String referenceId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "business_client_id", nullable = false)
     private User businessClient;
@@ -99,6 +102,14 @@ public class Shipment {
 
     public void setTrackingNumber(String trackingNumber) {
         this.trackingNumber = trackingNumber;
+    }
+
+    public String getReferenceId() {
+        return referenceId;
+    }
+
+    public void setReferenceId(String referenceId) {
+        this.referenceId = referenceId;
     }
 
     public User getBusinessClient() {

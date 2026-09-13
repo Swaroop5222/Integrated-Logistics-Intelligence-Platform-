@@ -1,50 +1,70 @@
-# ShipTrack Pro — Integrated First 4 Tasks
+# ShipTrack Pro — Integrated Logistics Intelligence Platform
 
-This folder combines the current React frontend with the completed Spring Boot shipment/auth backend.
+ShipTrack Pro is an integrated logistics management platform with a React frontend and Spring Boot backend. The system provides shipment management, authentication, role-based access control, live delivery tracking, shipment status management, ETA calculation, and delivery forecasting.
 
-## First 4 Milestone-1 tasks
+## Milestone-1 Tasks
 
-1. Database Schema Design — backend entities/JPA/PostgreSQL configuration included.
-2. JWT Authentication — register/login + JWT generation/validation.
-3. Role-Based Access Control — Spring Security + `@PreAuthorize` on shipment operations, with role-aware ownership checks in the service.
-4. Shipment Management APIs — create, list, get, update, status update, cancel, and history endpoints.
+### 1. Database Schema Design
 
-## Run
+- JPA entities and PostgreSQL database configuration.
+- Entities and relationships for users, shipments, tracking, notifications, routes, and related modules.
 
-### Backend
+### 2. JWT Authentication
 
-```powershell
-cd backend
-.\mvnw.cmd clean spring-boot:run
-```
+- User registration and login.
+- JWT token generation and validation.
+- Secure API access using Bearer tokens.
 
-Backend runs on `http://localhost:8080`.
+### 3. Role-Based Access Control
 
-Update `backend/src/main/resources/application.properties` if your PostgreSQL username/password differs.
+Implemented using Spring Security for:
 
-### Frontend
+- `CUSTOMER`
+- `BUSINESS_CLIENT`
+- `LOGISTICS_OPERATOR`
+- `SUPPORT_AGENT`
+- `ADMINISTRATOR`
 
-Open another terminal:
+Role-based permissions are implemented using Spring Security and `@PreAuthorize`.
 
-```powershell
-cd Frontend
-npm install
-npm run dev
-```
+### 4. Shipment Management APIs
 
-Frontend runs on `http://localhost:5173`.
+Implemented APIs for:
 
-## Main API endpoints
+- Create shipment
+- List shipments
+- Get shipment by ID
+- Track shipment by tracking number
+- Update shipment
+- Update shipment status
+- Cancel shipment
+- View shipment status history
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/shipments`
-- `GET /api/shipments`
-- `GET /api/shipments/{id}`
-- `GET /api/shipments/track/{trackingNumber}`
-- `PUT /api/shipments/{id}`
-- `PATCH /api/shipments/{id}/status`
-- `PATCH /api/shipments/{id}/cancel`
-- `GET /api/shipments/{id}/history`
+---
 
-The React login stores the JWT and uses it as a Bearer token for protected shipment requests.
+## Milestone-2 Tasks
+
+### 1. Google Maps Integration
+
+Integration for route visualization and location tracking is currently in progress.
+
+### 2. Live Delivery Tracking
+
+Backend implementation completed for shipment location tracking.
+
+Features include:
+
+- Update shipment location
+- Get current shipment location
+- Get location history
+- Get live tracking information
+- Store latitude and longitude
+- Store location name and recorded time
+
+### Live Tracking APIs
+
+```text
+PATCH /api/shipments/{id}/location
+GET   /api/shipments/{id}/location
+GET   /api/shipments/{id}/location-history
+GET   /api/shipments/{id}/tracking

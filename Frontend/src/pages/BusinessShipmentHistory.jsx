@@ -244,14 +244,16 @@ function BusinessShipmentHistory() {
 
           <div className="business-history-profile">
 
-            <div className="business-history-avatar">
-              R
-            </div>
+           <div className="business-history-avatar">
+  {JSON.parse(localStorage.getItem("user") || "{}").fullName?.charAt(0)}
+</div>
 
-            <div>
-              <strong>Rekha Patil</strong>
-              <span>Business Client</span>
-            </div>
+<div>
+  <strong>
+    {JSON.parse(localStorage.getItem("user") || "{}").fullName}
+  </strong>
+  <span>Business Client</span>
+</div>
 
           </div>
 

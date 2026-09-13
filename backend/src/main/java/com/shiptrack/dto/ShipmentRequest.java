@@ -6,6 +6,7 @@ public class ShipmentRequest {
 
     private Long businessClientId;
     private Long customerId;
+    private String referenceId;
     private String senderName;
     private String senderPhone;
     private String senderAddress;
@@ -17,6 +18,14 @@ public class ShipmentRequest {
     private Long assignedOperatorId;
 
     public ShipmentRequest() {}
+
+    public String getReferenceId() {
+        return referenceId;
+    }
+
+    public void setReferenceId(String referenceId) {
+        this.referenceId = referenceId;
+    }
 
     public Long getBusinessClientId() {
         return businessClientId;

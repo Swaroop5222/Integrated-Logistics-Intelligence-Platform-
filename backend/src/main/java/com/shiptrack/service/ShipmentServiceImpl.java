@@ -116,6 +116,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         shipment.setTrackingNumber(generateUniqueTrackingNumber());
+        shipment.setReferenceId(request.getReferenceId());
         shipment.setSenderName(request.getSenderName());
         shipment.setSenderPhone(request.getSenderPhone());
         shipment.setSenderAddress(request.getSenderAddress());
@@ -150,8 +151,10 @@ public class ShipmentServiceImpl implements ShipmentService {
 
     @Override
     public ShipmentResponse getShipmentByTrackingNumber(String trackingNumber) {
+        User currentUser = getCurrentUser();
         Shipment shipment = shipmentRepository.findByTrackingNumber(trackingNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Shipment not found with tracking number: " + trackingNumber));
+        checkVisibility(shipment, currentUser);
         return mapToResponse(shipment);
     }
 
@@ -214,6 +217,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // Modify standard fields
+        shipment.setReferenceId(request.getReferenceId());
         shipment.setSenderName(request.getSenderName());
         shipment.setSenderPhone(request.getSenderPhone());
         shipment.setSenderAddress(request.getSenderAddress());
@@ -312,6 +316,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         ShipmentResponse r = new ShipmentResponse();
         r.setId(s.getId());
         r.setTrackingNumber(s.getTrackingNumber());
+        r.setReferenceId(s.getReferenceId());
         r.setBusinessClientId(s.getBusinessClient().getId());
         r.setBusinessClientName(s.getBusinessClient().getFullName());
         if (s.getCustomer() != null) {

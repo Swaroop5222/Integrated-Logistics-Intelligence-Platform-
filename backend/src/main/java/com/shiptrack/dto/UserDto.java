@@ -8,17 +8,19 @@ public class UserDto {
     private String fullName;
     private String email;
     private Role role;
+    private String registerId;
     private String phoneNumber;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public UserDto() {}
 
-    public UserDto(Long id, String fullName, String email, Role role, String phoneNumber, LocalDateTime createdAt, LocalDateTime updatedAt) {
+    public UserDto(Long id, String fullName, String email, Role role, String registerId, String phoneNumber, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.fullName = fullName;
         this.email = email;
         this.role = role;
+        this.registerId = registerId;
         this.phoneNumber = phoneNumber;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -54,6 +56,14 @@ public class UserDto {
 
     public void setRole(Role role) {
         this.role = role;
+    }
+
+    public String getRegisterId() {
+        return registerId;
+    }
+
+    public void setRegisterId(String registerId) {
+        this.registerId = registerId;
     }
 
     public String getPhoneNumber() {

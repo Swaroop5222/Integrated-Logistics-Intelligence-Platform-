@@ -8,6 +8,7 @@ public class ShipmentResponse {
 
     private Long id;
     private String trackingNumber;
+    private String referenceId;
     private Long businessClientId;
     private String businessClientName;
     private Long customerId;
@@ -42,6 +43,14 @@ public class ShipmentResponse {
 
     public void setTrackingNumber(String trackingNumber) {
         this.trackingNumber = trackingNumber;
+    }
+
+    public String getReferenceId() {
+        return referenceId;
+    }
+
+    public void setReferenceId(String referenceId) {
+        this.referenceId = referenceId;
     }
 
     public Long getBusinessClientId() {

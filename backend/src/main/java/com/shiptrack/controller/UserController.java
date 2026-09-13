@@ -33,6 +33,7 @@ public class UserController {
                 user.getFullName(),
                 user.getEmail(),
                 user.getRole(),
+                user.getRegisterId(),
                 user.getPhoneNumber(),
                 user.getCreatedAt(),
                 user.getUpdatedAt()
