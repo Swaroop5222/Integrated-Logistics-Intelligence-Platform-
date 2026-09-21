@@ -1,4 +1,9 @@
 import { Link } from "react-router-dom";
+
+import { useEffect, useState } from "react";
+
+import { apiRequest } from "../api";
+
 import {
   ArrowLeft,
   Bell,
@@ -16,65 +21,115 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+} from "react-leaflet";
+
+import L from "leaflet";
+
+import "leaflet/dist/leaflet.css";
+
 import "./OperatorLiveDelivery.css";
+delete L.Icon.Default.prototype._getIconUrl;
+
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+});
 
 function OperatorLiveDelivery() {
-  const deliveries = [
-    {
-      id: "TRK-2026-101",
-      driver: "Rahul Kumar",
-      vehicle: "TS 09 AB 4521",
-      route: "Hyderabad → Bengaluru",
-      location: "Kurnool Highway",
-      eta: "2h 18m",
-      progress: 72,
-      status: "On Route",
-    },
-    {
-      id: "TRK-2026-102",
-      driver: "Arjun Reddy",
-      vehicle: "TS 08 CD 7842",
-      route: "Hyderabad → Mumbai",
-      location: "Solapur",
-      eta: "5h 42m",
-      progress: 54,
-      status: "On Route",
-    },
-    {
-      id: "TRK-2026-103",
-      driver: "Vikram Singh",
-      vehicle: "KA 01 EF 2389",
-      route: "Bengaluru → Chennai",
-      location: "Hosur",
-      eta: "1h 05m",
-      progress: 86,
-      status: "Near Destination",
-    },
-    {
-      id: "TRK-2026-104",
-      driver: "Suresh Babu",
-      vehicle: "TN 10 GH 9182",
-      route: "Chennai → Hyderabad",
-      location: "Nellore",
-      eta: "4h 26m",
-      progress: 61,
-      status: "Delayed",
-    },
-    {
-      id: "TRK-2026-105",
-      driver: "Manoj Verma",
-      vehicle: "MH 12 JK 6321",
-      route: "Mumbai → Pune",
-      location: "Lonavala",
-      eta: "48m",
-      progress: 91,
-      status: "Near Destination",
-    },
-  ];
+  const [deliveries, setDeliveries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [locations, setLocations] = useState({});
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+
+      const [user, shipments] = await Promise.all([
+        apiRequest("/api/users/me"),
+        apiRequest("/api/shipments"),
+      ]);
+
+      setCurrentUser(user);
+
+      const shipmentList = Array.isArray(shipments) ? shipments : [];
+      setDeliveries(shipmentList);
+
+      const locationResults = await Promise.all(
+        shipmentList.map(async (shipment) => {
+          try {
+            const location = await apiRequest(
+              `/api/shipments/${shipment.id}/location`
+            );
+
+            return [shipment.id, location];
+          } catch (error) {
+            console.error(
+              `Location unavailable for shipment ${shipment.id}:`,
+              error
+            );
+
+            return [shipment.id, null];
+          }
+        })
+      );
+
+      setLocations(Object.fromEntries(locationResults));
+    } catch (error) {
+      console.error("Failed to load live delivery data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const operatorName =
+    currentUser?.name ||
+    currentUser?.fullName ||
+    currentUser?.username ||
+    currentUser?.email ||
+    "Operator";
+
+  const operatorInitials = operatorName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+  const activeDeliveries = deliveries.filter(
+    (delivery) =>
+      delivery.status !== "DELIVERED" &&
+      delivery.status !== "CANCELLED"
+  );
+
+  const completedDeliveries = deliveries.filter(
+    (delivery) => delivery.status === "DELIVERED"
+  );
+
+  const delayedDeliveries = deliveries.filter(
+    (delivery) =>
+      delivery.status === "FAILED_DELIVERY" ||
+      delivery.status === "CANCELLED"
+  );
+
+  const trackedLocations = Object.values(locations).filter(Boolean).length;
 
   return (
     <div className="operator-live-page">
-
       {/* Sidebar */}
       <aside className="operator-live-sidebar">
         <div className="operator-brand">
@@ -94,7 +149,6 @@ function OperatorLiveDelivery() {
         </div>
 
         <nav className="operator-live-nav">
-
           <Link to="/dashboard/operator">
             <Navigation size={18} />
             Dashboard
@@ -103,7 +157,7 @@ function OperatorLiveDelivery() {
           <Link to="/operator/live-delivery" className="active">
             <Radio size={18} />
             Live Deliveries
-            <span className="nav-count">32</span>
+            <span className="nav-count">{activeDeliveries.length}</span>
           </Link>
 
           <Link to="/dashboard/operator">
@@ -130,7 +184,6 @@ function OperatorLiveDelivery() {
             <CheckCircle2 size={18} />
             Proof of Delivery
           </Link>
-
         </nav>
 
         <div className="sidebar-bottom">
@@ -140,11 +193,11 @@ function OperatorLiveDelivery() {
           </Link>
 
           <div className="operator-user">
-            <div className="operator-avatar">RK</div>
+            <div className="operator-avatar">{operatorInitials}</div>
 
             <div>
-              <strong>Operator</strong>
-              <span>Operations Team</span>
+              <strong>{operatorName}</strong>
+              <span>Logistics Operator</span>
             </div>
 
             <MoreHorizontal size={18} />
@@ -154,10 +207,8 @@ function OperatorLiveDelivery() {
 
       {/* Main Content */}
       <main className="operator-live-main">
-
         {/* Header */}
         <header className="operator-live-header">
-
           <div>
             <div className="page-breadcrumb">
               Operations <span>/</span> Live Deliveries
@@ -185,17 +236,19 @@ function OperatorLiveDelivery() {
               <span className="notification-dot"></span>
             </button>
 
-            <button className="refresh-button">
+            <button
+              className="refresh-button"
+              onClick={loadData}
+              disabled={loading}
+            >
               <RefreshCw size={17} />
-              Refresh
+              {loading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
-
         </header>
 
         {/* Stats */}
         <section className="live-stats">
-
           <div className="live-stat-card">
             <div className="stat-icon orange">
               <Truck size={22} />
@@ -203,8 +256,8 @@ function OperatorLiveDelivery() {
 
             <div>
               <span>Active Deliveries</span>
-              <strong>32</strong>
-              <small className="positive">+8.4% today</small>
+              <strong>{activeDeliveries.length}</strong>
+              <small>Currently assigned</small>
             </div>
           </div>
 
@@ -215,8 +268,16 @@ function OperatorLiveDelivery() {
 
             <div>
               <span>Drivers On Road</span>
-              <strong>33</strong>
-              <small>of 41 active drivers</small>
+              <strong>
+                {
+                  new Set(
+                    activeDeliveries
+                      .map((delivery) => delivery.assignedOperatorId)
+                      .filter(Boolean)
+                  ).size
+                }
+              </strong>
+              <small>Assigned operators</small>
             </div>
           </div>
 
@@ -226,9 +287,9 @@ function OperatorLiveDelivery() {
             </div>
 
             <div>
-              <span>Completed Today</span>
-              <strong>87</strong>
-              <small className="positive">92.6% on-time</small>
+              <span>Completed</span>
+              <strong>{completedDeliveries.length}</strong>
+              <small>Delivered shipments</small>
             </div>
           </div>
 
@@ -238,20 +299,17 @@ function OperatorLiveDelivery() {
             </div>
 
             <div>
-              <span>Delayed Deliveries</span>
-              <strong>09</strong>
-              <small className="negative">Needs attention</small>
+              <span>Attention Required</span>
+              <strong>{delayedDeliveries.length}</strong>
+              <small className="negative">Failed or cancelled</small>
             </div>
           </div>
-
         </section>
 
         {/* Map + Activity */}
         <section className="monitor-grid">
-
           {/* Map */}
           <div className="live-map-card">
-
             <div className="card-header">
               <div>
                 <h2>Live Fleet Map</h2>
@@ -265,149 +323,178 @@ function OperatorLiveDelivery() {
             </div>
 
             <div className="fake-map">
+  <MapContainer
+    center={[17.385, 78.4867]}
+    zoom={6}
+    scrollWheelZoom={true}
+    style={{
+      width: "100%",
+      height: "100%",
+      minHeight: "420px",
+    }}
+  >
+    <TileLayer
+      attribution="&copy; OpenStreetMap contributors"
+      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    />
 
-              <div className="map-grid"></div>
+    {Object.entries(locations).map(
+      ([shipmentId, location]) => {
+        const latitude = Number(
+          location?.currentLocation?.latitude ??
+            location?.latitude
+        );
 
-              <div className="map-road road-one"></div>
-              <div className="map-road road-two"></div>
-              <div className="map-road road-three"></div>
+        const longitude = Number(
+          location?.currentLocation?.longitude ??
+            location?.longitude
+        );
 
-              <div className="city city-hyd">
-                <span></span>
-                Hyderabad
-              </div>
+        if (
+          !Number.isFinite(latitude) ||
+          !Number.isFinite(longitude)
+        ) {
+          return null;
+        }
 
-              <div className="city city-blr">
-                <span></span>
-                Bengaluru
-              </div>
+        const shipment = deliveries.find(
+          (item) =>
+            String(item.id) === String(shipmentId)
+        );
 
-              <div className="city city-chn">
-                <span></span>
-                Chennai
-              </div>
+        return (
+          <Marker
+            key={`marker-${shipmentId}`}
+            position={[latitude, longitude]}
+          >
+            <Popup>
+              <strong>
+                {shipment?.trackingNumber ||
+                  `Shipment #${shipmentId}`}
+              </strong>
 
-              <div className="city city-mum">
-                <span></span>
-                Mumbai
-              </div>
+              <br />
 
-              <div className="vehicle-marker marker-one">
-                <Truck size={15} />
-              </div>
+              {shipment?.assignedOperatorName ||
+                "Operator"}
 
-              <div className="vehicle-marker marker-two">
-                <Truck size={15} />
-              </div>
+              <br />
 
-              <div className="vehicle-marker marker-three">
-                <Truck size={15} />
-              </div>
+              {location?.currentLocation?.locationName ||
+                location?.locationName ||
+                "Current location"}
 
-              <div className="vehicle-marker marker-four">
-                <Truck size={15} />
-              </div>
+              <br />
 
-              <div className="map-info-box">
-                <div>
-                  <span className="map-live-dot"></span>
-                  Live tracking active
-                </div>
+              <small>
+                {latitude.toFixed(6)},{" "}
+                {longitude.toFixed(6)}
+              </small>
+            </Popup>
+          </Marker>
+        );
+      }
+    )}
+  </MapContainer>
 
-                <strong>32 vehicles</strong>
-                <small>Last updated 18 sec ago</small>
-              </div>
+  <div className="map-info-box">
+    <div>
+      <span className="map-live-dot"></span>
+      Live tracking active
+    </div>
 
-            </div>
+    <strong>{trackedLocations} tracked</strong>
 
+    <small>
+      Using shipment location data
+    </small>
+  </div>
+</div>
           </div>
 
           {/* Alerts */}
           <div className="activity-card">
-
             <div className="card-header">
               <div>
                 <h2>Operational Alerts</h2>
                 <p>Requires operator attention</p>
               </div>
 
-              <span className="alert-count">4</span>
+              <span className="alert-count">
+                {delayedDeliveries.length}
+              </span>
             </div>
 
             <div className="alert-list">
+              {delayedDeliveries.length > 0 ? (
+                delayedDeliveries.map((delivery) => (
+                  <div
+                    className="alert-item danger"
+                    key={`alert-${delivery.id}`}
+                  >
+                    <div className="alert-icon">
+                      <AlertTriangle size={17} />
+                    </div>
 
-              <div className="alert-item danger">
-                <div className="alert-icon">
-                  <AlertTriangle size={17} />
+                    <div>
+                      <strong>Shipment requires attention</strong>
+
+                      <p>
+                        {delivery.trackingNumber ||
+                          `Shipment #${delivery.id}`}{" "}
+                        has status{" "}
+                        {(delivery.status || "UNKNOWN").replaceAll(
+                          "_",
+                          " "
+                        )}
+                        .
+                      </p>
+
+                      <span>
+                        {delivery.updatedAt
+                          ? new Date(
+                              delivery.updatedAt
+                            ).toLocaleString()
+                          : "Recently updated"}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="alert-item success">
+                  <div className="alert-icon">
+                    <CheckCircle2 size={17} />
+                  </div>
+
+                  <div>
+                    <strong>No shipment alerts</strong>
+                    <p>
+                      No failed or cancelled shipments require attention.
+                    </p>
+                    <span>Current shipment data</span>
+                  </div>
                 </div>
-
-                <div>
-                  <strong>Delivery delayed</strong>
-                  <p>TRK-2026-104 is 42 min behind ETA.</p>
-                  <span>8 min ago</span>
-                </div>
-              </div>
-
-              <div className="alert-item warning">
-                <div className="alert-icon">
-                  <Clock3 size={17} />
-                </div>
-
-                <div>
-                  <strong>ETA changed</strong>
-                  <p>TRK-2026-102 ETA increased by 28 min.</p>
-                  <span>16 min ago</span>
-                </div>
-              </div>
-
-              <div className="alert-item info">
-                <div className="alert-icon">
-                  <MapPin size={17} />
-                </div>
-
-                <div>
-                  <strong>Route deviation</strong>
-                  <p>Vehicle TS 09 AB 4521 left planned route.</p>
-                  <span>23 min ago</span>
-                </div>
-              </div>
-
-              <div className="alert-item success">
-                <div className="alert-icon">
-                  <CheckCircle2 size={17} />
-                </div>
-
-                <div>
-                  <strong>Delivery completed</strong>
-                  <p>TRK-2026-099 successfully delivered.</p>
-                  <span>31 min ago</span>
-                </div>
-              </div>
-
+              )}
             </div>
 
             <button className="view-alerts">
               View all alerts
             </button>
-
           </div>
-
         </section>
 
         {/* Delivery Table */}
         <section className="delivery-card">
-
           <div className="delivery-card-header">
-
             <div>
               <h2>Active Deliveries</h2>
               <p>Currently moving shipments</p>
             </div>
 
             <div className="delivery-tools">
-
               <div className="search-box">
                 <Search size={17} />
+
                 <input
                   type="text"
                   placeholder="Search shipment or driver..."
@@ -417,15 +504,11 @@ function OperatorLiveDelivery() {
               <button className="filter-button">
                 All Deliveries
               </button>
-
             </div>
-
           </div>
 
           <div className="delivery-table-wrapper">
-
             <table className="delivery-table">
-
               <thead>
                 <tr>
                   <th>SHIPMENT</th>
@@ -439,157 +522,213 @@ function OperatorLiveDelivery() {
               </thead>
 
               <tbody>
-
-                {deliveries.map((delivery) => (
-                  <tr key={delivery.id}>
-
-                    <td>
-                      <div className="shipment-id">
-                        <div className="shipment-icon">
-                          <Package size={16} />
-                        </div>
-
-                        <div>
-                          <strong>{delivery.id}</strong>
-                          <span>{delivery.vehicle}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td>
-                      <div className="driver-cell">
-                        <div className="small-avatar">
-                          {delivery.driver
-                            .split(" ")
-                            .map((name) => name[0])
-                            .join("")}
-                        </div>
-
-                        <span>{delivery.driver}</span>
-                      </div>
-                    </td>
-
-                    <td>
-                      <span className="route-text">
-                        {delivery.route}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div className="location-cell">
-                        <MapPin size={15} />
-                        {delivery.location}
-                      </div>
-                    </td>
-
-                    <td>
-                      <div className="progress-cell">
-
-                        <div className="progress-top">
-                          <span>{delivery.progress}%</span>
-                        </div>
-
-                        <div className="progress-bar">
-                          <div
-                            className="progress-fill"
-                            style={{
-                              width: `${delivery.progress}%`,
-                            }}
-                          ></div>
-                        </div>
-
-                      </div>
-                    </td>
-
-                    <td>
-                      <div className="eta-cell">
-                        <Clock3 size={15} />
-                        {delivery.eta}
-                      </div>
-                    </td>
-
-                    <td>
-                      <span
-                        className={`delivery-status ${
-                          delivery.status === "Delayed"
-                            ? "delayed"
-                            : delivery.status === "Near Destination"
-                            ? "near"
-                            : "route"
-                        }`}
+                {deliveries.length === 0 ? (
+                  <tr>
+                    <td colSpan="7">
+                      <div
+                        style={{
+                          padding: "30px",
+                          textAlign: "center",
+                        }}
                       >
-                        <span></span>
-                        {delivery.status}
-                      </span>
+                        {loading
+                          ? "Loading shipments..."
+                          : "No shipments found."}
+                      </div>
                     </td>
-
                   </tr>
-                ))}
+                ) : (
+                  deliveries.map((delivery) => {
+                    const progress =
+                      delivery.status === "DELIVERED"
+                        ? 100
+                        : delivery.status === "OUT_FOR_DELIVERY"
+                        ? 75
+                        : delivery.status === "IN_TRANSIT"
+                        ? 50
+                        : delivery.status === "PICKED_UP"
+                        ? 25
+                        : 0;
 
+                    const driverName =
+                      delivery.assignedOperatorName || "Operator";
+
+                    const driverInitials = driverName
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((name) => name[0])
+                      .join("")
+                      .toUpperCase();
+
+                    const currentLocation = locations[delivery.id];
+
+                    return (
+                      <tr key={delivery.id}>
+                        {/* Shipment */}
+                        <td>
+                          <div className="shipment-id">
+                            <div className="shipment-icon">
+                              <Package size={16} />
+                            </div>
+
+                            <div>
+                              <strong>
+                                {delivery.trackingNumber ||
+                                  `Shipment #${delivery.id}`}
+                              </strong>
+
+                              <span>
+                                {delivery.referenceNumber ||
+                                  "Shipment"}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Driver */}
+                        <td>
+                          <div className="driver-cell">
+                            <div className="small-avatar">
+                              {driverInitials}
+                            </div>
+
+                            <span>{driverName}</span>
+                          </div>
+                        </td>
+
+                        {/* Route */}
+                        <td>
+                          <span className="route-text">
+                            {delivery.senderCity ||
+                              delivery.senderAddress ||
+                              "Pickup"}{" "}
+                            →{" "}
+                            {delivery.receiverCity ||
+                              delivery.receiverAddress ||
+                              "Destination"}
+                          </span>
+                        </td>
+
+                        {/* Current Location */}
+                        <td>
+                          <div className="location-cell">
+                            <MapPin size={15} />
+
+                            {currentLocation?.locationName ||
+                              (currentLocation?.latitude != null &&
+                              currentLocation?.longitude != null
+                                ? `${currentLocation.latitude}, ${currentLocation.longitude}`
+                                : "Location unavailable")}
+                          </div>
+                        </td>
+
+                        {/* Progress */}
+                        <td>
+                          <div className="progress-cell">
+                            <div className="progress-top">
+                              <span>
+                                {progress}%
+                              </span>
+                            </div>
+
+                            <div className="progress-bar">
+                              <div
+                                className="progress-fill"
+                                style={{
+                                  width: `${progress}%`,
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* ETA */}
+                        <td>
+                          <div className="eta-cell">
+                            <Clock3 size={15} />
+                            <span>—</span>
+                          </div>
+                        </td>
+
+                        {/* Status */}
+                        <td>
+                          <span
+                            className={`delivery-status ${
+                              delivery.status === "DELIVERED"
+                                ? "near"
+                                : delivery.status ===
+                                    "FAILED_DELIVERY" ||
+                                  delivery.status === "CANCELLED"
+                                ? "delayed"
+                                : "route"
+                            }`}
+                          >
+                            <span></span>
+
+                            {(delivery.status || "UNKNOWN").replaceAll(
+                              "_",
+                              " "
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
-
             </table>
-
           </div>
 
           <div className="table-footer">
             <span>
-              Showing <strong>5</strong> of <strong>32</strong> active
-              deliveries
+              Showing{" "}
+              <strong>{deliveries.length}</strong>{" "}
+              active deliveries
             </span>
 
             <button>View All Deliveries →</button>
           </div>
-
         </section>
 
         {/* Bottom Cards */}
         <section className="bottom-monitor-grid">
-
           <div className="mini-monitor-card">
-
             <div className="mini-card-icon">
               <Navigation size={21} />
             </div>
 
             <div>
-              <span>Routes Being Monitored</span>
-              <strong>18</strong>
-              <p>6 routes require attention</p>
+              <span>Tracked Locations</span>
+              <strong>{trackedLocations}</strong>
+              <p>Shipment locations available</p>
             </div>
-
           </div>
 
           <div className="mini-monitor-card">
-
             <div className="mini-card-icon purple">
               <Radio size={21} />
             </div>
 
             <div>
-              <span>Live Tracking Accuracy</span>
-              <strong>98.4%</strong>
-              <p>GPS signals healthy</p>
+              <span>Live Tracking</span>
+              <strong>{trackedLocations}</strong>
+              <p>Shipments with GPS data</p>
             </div>
-
           </div>
 
           <div className="mini-monitor-card">
-
             <div className="mini-card-icon green">
               <CheckCircle2 size={21} />
             </div>
 
             <div>
               <span>Successful Deliveries</span>
-              <strong>92.6%</strong>
-              <p>On-time performance today</p>
+              <strong>{completedDeliveries.length}</strong>
+              <p>Delivered shipments</p>
             </div>
-
           </div>
-
         </section>
-
       </main>
     </div>
   );

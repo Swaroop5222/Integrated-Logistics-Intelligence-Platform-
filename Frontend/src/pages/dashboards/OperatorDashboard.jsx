@@ -1,73 +1,480 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../../api";
 import "./OperatorDashboard.css";
 
-const activeShipments = [
-  {
-    id: "TRK-2026-101",
-    route: "Hyderabad → Bengaluru",
-    driver: "Arjun Kumar",
-    vehicle: "TS 09 AB 4521",
-    status: "In Transit",
-    eta: "Today, 8:30 PM",
-    progress: 72,
-  },
-  {
-    id: "TRK-2026-102",
-    route: "Mumbai → Pune",
-    driver: "Rahul Sharma",
-    vehicle: "MH 12 CD 7842",
-    status: "Out for Delivery",
-    eta: "Today, 6:15 PM",
-    progress: 91,
-  },
-  {
-    id: "TRK-2026-103",
-    route: "Chennai → Hyderabad",
-    driver: "Vijay Reddy",
-    vehicle: "TN 38 EF 2910",
-    status: "Delayed",
-    eta: "Tomorrow, 10:00 AM",
-    progress: 48,
-  },
-  {
-    id: "TRK-2026-104",
-    route: "Delhi → Jaipur",
-    driver: "Amit Singh",
-    vehicle: "DL 01 GH 6328",
-    status: "In Transit",
-    eta: "Tomorrow, 7:45 AM",
-    progress: 64,
-  },
-];
-
-const routes = [
-  {
-    route: "Hyderabad → Bengaluru",
-    shipments: 14,
-    distance: "575 km",
-    status: "On Route",
-  },
-  {
-    route: "Mumbai → Pune",
-    shipments: 9,
-    distance: "150 km",
-    status: "On Route",
-  },
-  {
-    route: "Chennai → Hyderabad",
-    shipments: 11,
-    distance: "630 km",
-    status: "Attention",
-  },
-  {
-    route: "Delhi → Jaipur",
-    shipments: 7,
-    distance: "280 km",
-    status: "On Route",
-  },
-];
-
 function OperatorDashboard() {
+  const [shipments, setShipments] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [operator, setOperator] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  /*
+   * ---------------------------------------------------------
+   * FETCH DASHBOARD DATA
+   * ---------------------------------------------------------
+   */
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDashboard = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const shipmentResponse = await apiRequest("/api/shipments");
+
+        const shipmentData = Array.isArray(shipmentResponse)
+          ? shipmentResponse
+          : shipmentResponse?.content ||
+            shipmentResponse?.data ||
+            shipmentResponse?.shipments ||
+            [];
+
+        if (!mounted) return;
+
+        setShipments(Array.isArray(shipmentData) ? shipmentData : []);
+
+        /*
+         * Get current logged-in operator.
+         * If this endpoint is not available in the current backend,
+         * the dashboard will still work using shipment data.
+         */
+        try {
+          const operatorResponse = await apiRequest("/api/users/me");
+
+          if (mounted) {
+            setOperator(operatorResponse);
+          }
+        } catch (userError) {
+          console.warn(
+            "Could not load current operator information:",
+            userError
+          );
+        }
+
+        /*
+         * Load route information for the operator's shipments.
+         *
+         * Routes are loaded individually because the existing backend
+         * provides route information per shipment.
+         */
+        const uniqueShipmentIds = [
+          ...new Set(
+            shipmentData
+              .map((shipment) => shipment?.id)
+              .filter((id) => id !== undefined && id !== null)
+          ),
+        ];
+
+        const routeResults = await Promise.allSettled(
+          uniqueShipmentIds.map((shipmentId) =>
+            apiRequest(`/api/routes/shipment/${shipmentId}`)
+          )
+        );
+
+        if (!mounted) return;
+
+        const routeData = [];
+
+        routeResults.forEach((result, index) => {
+          if (result.status !== "fulfilled") return;
+
+          const response = result.value;
+
+          const routeList = Array.isArray(response)
+            ? response
+            : response?.data
+              ? Array.isArray(response.data)
+                ? response.data
+                : [response.data]
+              : response
+                ? [response]
+                : [];
+
+          routeList.forEach((route) => {
+            if (route) {
+              routeData.push({
+                ...route,
+                shipmentId: uniqueShipmentIds[index],
+              });
+            }
+          });
+        });
+
+        setRoutes(routeData);
+      } catch (err) {
+        console.error("Operator dashboard loading error:", err);
+
+        if (mounted) {
+          setError(
+            err?.message ||
+              "Unable to load operator dashboard data."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  /*
+   * ---------------------------------------------------------
+   * HELPERS
+   * ---------------------------------------------------------
+   */
+
+  const normalizeStatus = (status) =>
+    String(status || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "_");
+
+  const getShipmentTrackingNumber = (shipment) =>
+    shipment?.trackingNumber ||
+    shipment?.trackingId ||
+    shipment?.tracking_number ||
+    shipment?.referenceNumber ||
+    shipment?.reference ||
+    `Shipment #${shipment?.id ?? "N/A"}`;
+
+  const getShipmentStatus = (shipment) => {
+    const status = normalizeStatus(shipment?.status);
+
+    switch (status) {
+      case "IN_TRANSIT":
+        return "In Transit";
+
+      case "PICKED_UP":
+        return "Picked Up";
+
+      case "DELIVERED":
+        return "Delivered";
+
+      case "CANCELLED":
+        return "Cancelled";
+
+      case "CREATED":
+        return "Created";
+
+      default:
+        return shipment?.status || "Unknown";
+    }
+  };
+
+  const getStatusClass = (shipment) => {
+    const status = normalizeStatus(shipment?.status);
+
+    if (status === "DELIVERED") {
+      return "delivery-status";
+    }
+
+    if (status === "CANCELLED") {
+      return "delayed-status";
+    }
+
+    if (status === "IN_TRANSIT" || status === "PICKED_UP") {
+      return "transit-status";
+    }
+
+    return "transit-status";
+  };
+
+  const getAddress = (value) => {
+    if (!value) return "";
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (typeof value === "object") {
+      return (
+        value.address ||
+        value.city ||
+        value.locationName ||
+        value.name ||
+        ""
+      );
+    }
+
+    return "";
+  };
+
+ const getSenderAddress = (shipment) => {
+  return (
+    getAddress(shipment?.senderAddress) ||
+    getAddress(shipment?.sender?.address) ||
+    shipment?.senderLocation ||
+    shipment?.senderCity ||
+    ""
+  );
+};
+
+  const getReceiverAddress = (shipment) => {
+  return (
+    getAddress(shipment?.receiverAddress) ||
+    getAddress(shipment?.receiver?.address) ||
+    shipment?.receiverLocation ||
+    shipment?.receiverCity ||
+    ""
+  );
+};
+
+  const getRouteText = (shipment) => {
+    const route =
+      shipment?.route ||
+      shipment?.routeName ||
+      shipment?.route?.name;
+
+    if (typeof route === "string" && route.trim()) {
+      return route;
+    }
+
+    const sender = getSenderAddress(shipment);
+    const receiver = getReceiverAddress(shipment);
+
+    if (sender && receiver) {
+      return `${sender} → ${receiver}`;
+    }
+
+    if (sender) {
+      return `${sender} → Destination`;
+    }
+
+    if (receiver) {
+      return `Origin → ${receiver}`;
+    }
+
+    return "Route information unavailable";
+  };
+
+  const getOperatorName = (shipment) => {
+    const assignedOperator =
+      shipment?.assignedOperator ||
+      shipment?.operator;
+
+    return (
+      assignedOperator?.name ||
+      assignedOperator?.fullName ||
+      shipment?.assignedOperatorName ||
+      shipment?.operatorName ||
+      operator?.name ||
+      operator?.fullName ||
+      operator?.username ||
+      "Logistics Operator"
+    );
+  };
+
+  const getVehicle = (shipment) => {
+    return (
+      shipment?.vehicle?.registrationNumber ||
+      shipment?.vehicle?.vehicleNumber ||
+      shipment?.vehicleNumber ||
+      shipment?.vehicleRegistrationNumber ||
+      shipment?.vehicle ||
+      "Vehicle not assigned"
+    );
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "Not available";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+
+    return date.toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * SHIPMENT STATISTICS
+   * ---------------------------------------------------------
+   */
+
+  const activeShipments = useMemo(() => {
+    return shipments.filter((shipment) => {
+      const status = normalizeStatus(shipment?.status);
+
+      return (
+        status !== "DELIVERED" &&
+        status !== "CANCELLED"
+      );
+    });
+  }, [shipments]);
+
+  const deliveredCount = useMemo(() => {
+    return shipments.filter(
+      (shipment) =>
+        normalizeStatus(shipment?.status) === "DELIVERED"
+    ).length;
+  }, [shipments]);
+
+  const inTransitCount = useMemo(() => {
+    return shipments.filter((shipment) => {
+      const status = normalizeStatus(shipment?.status);
+
+      return (
+        status === "IN_TRANSIT" ||
+        status === "PICKED_UP"
+      );
+    }).length;
+  }, [shipments]);
+
+  /*
+   * The existing backend does not have a DELAYED shipment status.
+   * Therefore we do not invent a delayed count.
+   */
+  const delayedCount = useMemo(() => {
+    return shipments.filter((shipment) => {
+      const status = normalizeStatus(shipment?.status);
+
+      return (
+        status === "DELAYED" ||
+        status === "FAILED_DELIVERY"
+      );
+    }).length;
+  }, [shipments]);
+
+  /*
+   * Calculate a simple overview percentage from actual
+   * shipment statuses instead of using the old dummy 67%.
+   */
+  const onRoutePercentage = useMemo(() => {
+    if (shipments.length === 0) return 0;
+
+    return Math.round(
+      (inTransitCount / shipments.length) * 100
+    );
+  }, [shipments.length, inTransitCount]);
+
+  /*
+   * ---------------------------------------------------------
+   * ACTIVE ROUTES
+   * ---------------------------------------------------------
+   */
+
+  const routeSummary = useMemo(() => {
+    const grouped = new Map();
+
+    routes.forEach((route) => {
+      const shipmentId = route?.shipmentId;
+
+      const shipment = shipments.find(
+        (item) => String(item?.id) === String(shipmentId)
+      );
+
+      const origin =
+        route?.origin ||
+        route?.startLocation ||
+        route?.source ||
+        route?.from ||
+        shipment?.senderCity ||
+        getSenderAddress(shipment);
+
+      const destination =
+        route?.destination ||
+        route?.endLocation ||
+        route?.target ||
+        route?.to ||
+        shipment?.receiverCity ||
+        getReceiverAddress(shipment);
+
+      const routeName =
+        route?.name ||
+        route?.routeName ||
+        (origin && destination
+          ? `${origin} → ${destination}`
+          : null);
+
+      if (!routeName) return;
+
+      const key = routeName.toLowerCase();
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          route: routeName,
+          shipments: 0,
+          distance:
+            route?.distance ||
+            route?.distanceKm ||
+            route?.totalDistance ||
+            null,
+          status: "On Route",
+        });
+      }
+
+      const item = grouped.get(key);
+
+      item.shipments += 1;
+
+      if (!item.distance) {
+        item.distance =
+          route?.distance ||
+          route?.distanceKm ||
+          route?.totalDistance ||
+          null;
+      }
+
+      const shipmentStatus = normalizeStatus(
+        shipment?.status
+      );
+
+      if (
+        shipmentStatus === "DELAYED" ||
+        shipmentStatus === "FAILED_DELIVERY"
+      ) {
+        item.status = "Attention";
+      }
+    });
+
+    return Array.from(grouped.values()).slice(0, 5);
+  }, [routes, shipments]);
+
+  /*
+   * ---------------------------------------------------------
+   * DISPLAY SHIPMENTS
+   * ---------------------------------------------------------
+   */
+
+  const displayedShipments = useMemo(() => {
+    return activeShipments.slice(0, 5);
+  }, [activeShipments]);
+
+  /*
+   * ---------------------------------------------------------
+   * DYNAMIC OPERATOR NAME
+   * ---------------------------------------------------------
+   */
+
+  const displayedOperatorName =
+    operator?.name ||
+    operator?.fullName ||
+    operator?.username ||
+    "Logistics Operator";
+
+  /*
+   * ---------------------------------------------------------
+   * RENDER
+   * ---------------------------------------------------------
+   */
+
   return (
     <div className="operator-dashboard">
 
@@ -75,7 +482,6 @@ function OperatorDashboard() {
 
       <aside className="operator-sidebar">
 
-        {/* Brand */}
         <div className="operator-brand">
           <div className="operator-brand-logo">
             S
@@ -87,10 +493,8 @@ function OperatorDashboard() {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="operator-nav">
 
-          {/* Dashboard */}
           <Link
             to="/dashboard/operator"
             className="operator-nav-link active"
@@ -99,7 +503,6 @@ function OperatorDashboard() {
             Dashboard
           </Link>
 
-          {/* Shipment Tracking */}
           <Link
             to="/operator/shipment-tracking"
             className="operator-nav-link"
@@ -108,7 +511,6 @@ function OperatorDashboard() {
             Shipment Tracking
           </Link>
 
-          {/* Live Deliveries */}
           <Link
             to="/operator/live-delivery"
             className="operator-nav-link"
@@ -117,7 +519,6 @@ function OperatorDashboard() {
             Live Deliveries
           </Link>
 
-          {/* Driver Tracking */}
           <Link
             to="/operator/driver-tracking"
             className="operator-nav-link"
@@ -126,7 +527,6 @@ function OperatorDashboard() {
             Driver Tracking
           </Link>
 
-          {/* Route Management */}
           <Link
             to="/operator/routes"
             className="operator-nav-link"
@@ -135,7 +535,6 @@ function OperatorDashboard() {
             Route Management
           </Link>
 
-          {/* ETA & Delays */}
           <Link
             to="/operator/eta-delay"
             className="operator-nav-link"
@@ -144,7 +543,6 @@ function OperatorDashboard() {
             ETA & Delays
           </Link>
 
-          {/* Proof of Delivery */}
           <Link
             to="/operator/pod"
             className="operator-nav-link"
@@ -155,7 +553,6 @@ function OperatorDashboard() {
 
         </nav>
 
-        {/* Bottom */}
         <div className="operator-sidebar-bottom">
 
           <div className="operator-user">
@@ -164,7 +561,7 @@ function OperatorDashboard() {
             </div>
 
             <div>
-              <strong>Logistics Operator</strong>
+              <strong>{displayedOperatorName}</strong>
               <span>Operations Team</span>
             </div>
           </div>
@@ -187,6 +584,7 @@ function OperatorDashboard() {
       <main className="operator-main">
 
         {/* Header */}
+
         <header className="operator-header">
 
           <div>
@@ -209,9 +607,13 @@ function OperatorDashboard() {
               System Live
             </div>
 
-            <button className="operator-notification">
+            <button
+              className="operator-notification"
+              type="button"
+              title="Notifications"
+            >
               ♢
-              <span>3</span>
+              <span>0</span>
             </button>
 
           </div>
@@ -219,11 +621,28 @@ function OperatorDashboard() {
         </header>
 
 
+        {/* Error */}
+
+        {error && (
+          <div
+            style={{
+              padding: "12px 16px",
+              marginBottom: "20px",
+              borderRadius: "8px",
+              background: "#fff4f4",
+              color: "#b42318",
+              border: "1px solid #f3c2c2",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+
         {/* ================= STAT CARDS ================= */}
 
         <section className="operator-stats">
 
-          {/* Active Shipments */}
           <div className="operator-stat-card orange">
 
             <div className="operator-stat-icon">
@@ -232,14 +651,19 @@ function OperatorDashboard() {
 
             <div>
               <span>Active Shipments</span>
-              <strong>48</strong>
-              <small>+6 from yesterday</small>
+
+              <strong>
+                {loading ? "..." : activeShipments.length}
+              </strong>
+
+              <small>
+                Currently assigned
+              </small>
             </div>
 
           </div>
 
 
-          {/* Live Deliveries */}
           <div className="operator-stat-card purple">
 
             <div className="operator-stat-icon">
@@ -248,14 +672,19 @@ function OperatorDashboard() {
 
             <div>
               <span>Live Deliveries</span>
-              <strong>32</strong>
-              <small>Currently on route</small>
+
+              <strong>
+                {loading ? "..." : inTransitCount}
+              </strong>
+
+              <small>
+                In transit / picked up
+              </small>
             </div>
 
           </div>
 
 
-          {/* Active Drivers */}
           <div className="operator-stat-card green">
 
             <div className="operator-stat-icon">
@@ -263,15 +692,20 @@ function OperatorDashboard() {
             </div>
 
             <div>
-              <span>Active Drivers</span>
-              <strong>33</strong>
-              <small>42 total drivers</small>
+              <span>Active Shipments</span>
+
+              <strong>
+                {loading ? "..." : inTransitCount}
+              </strong>
+
+              <small>
+                Currently moving
+              </small>
             </div>
 
           </div>
 
 
-          {/* Delayed Shipments */}
           <div className="operator-stat-card red">
 
             <div className="operator-stat-icon">
@@ -280,8 +714,14 @@ function OperatorDashboard() {
 
             <div>
               <span>Delayed Shipments</span>
-              <strong>09</strong>
-              <small>Needs attention</small>
+
+              <strong>
+                {loading ? "..." : String(delayedCount).padStart(2, "0")}
+              </strong>
+
+              <small>
+                Based on available status data
+              </small>
             </div>
 
           </div>
@@ -322,8 +762,13 @@ function OperatorDashboard() {
               <div className="delivery-ring">
 
                 <div className="delivery-ring-inner">
-                  <strong>67%</strong>
+
+                  <strong>
+                    {loading ? "..." : `${onRoutePercentage}%`}
+                  </strong>
+
                   <span>On Route</span>
+
                 </div>
 
               </div>
@@ -334,19 +779,30 @@ function OperatorDashboard() {
                 <div>
                   <span className="legend-dot delivered"></span>
                   <p>Delivered</p>
-                  <strong>87</strong>
+
+                  <strong>
+                    {loading ? "..." : deliveredCount}
+                  </strong>
                 </div>
+
 
                 <div>
                   <span className="legend-dot transit"></span>
                   <p>In Transit</p>
-                  <strong>32</strong>
+
+                  <strong>
+                    {loading ? "..." : inTransitCount}
+                  </strong>
                 </div>
+
 
                 <div>
                   <span className="legend-dot delayed"></span>
                   <p>Delayed</p>
-                  <strong>09</strong>
+
+                  <strong>
+                    {loading ? "..." : delayedCount}
+                  </strong>
                 </div>
 
               </div>
@@ -371,7 +827,7 @@ function OperatorDashboard() {
               </div>
 
               <span className="alert-count">
-                3
+                {delayedCount}
               </span>
 
             </div>
@@ -379,61 +835,75 @@ function OperatorDashboard() {
 
             <div className="alerts-list">
 
-              <div className="operator-alert red-alert">
+              {delayedCount > 0 ? (
 
-                <div className="alert-icon">
-                  !
+                shipments
+                  .filter((shipment) => {
+                    const status = normalizeStatus(
+                      shipment?.status
+                    );
+
+                    return (
+                      status === "DELAYED" ||
+                      status === "FAILED_DELIVERY"
+                    );
+                  })
+                  .slice(0, 3)
+                  .map((shipment) => (
+
+                    <div
+                      className="operator-alert red-alert"
+                      key={shipment.id}
+                    >
+
+                      <div className="alert-icon">
+                        !
+                      </div>
+
+                      <div>
+                        <strong>
+                          Shipment Delayed
+                        </strong>
+
+                        <p>
+                          {getShipmentTrackingNumber(shipment)}
+                        </p>
+                      </div>
+
+                      <span>
+                        Attention
+                      </span>
+
+                    </div>
+
+                  ))
+
+              ) : (
+
+                <div className="operator-alert purple-alert">
+
+                  <div className="alert-icon">
+                    i
+                  </div>
+
+                  <div>
+                    <strong>
+                      No operational alerts
+                    </strong>
+
+                    <p>
+                      No delayed or failed shipments are currently
+                      reported by the backend.
+                    </p>
+                  </div>
+
+                  <span>
+                    Live
+                  </span>
+
                 </div>
 
-                <div>
-                  <strong>Shipment Delayed</strong>
-
-                  <p>
-                    TRK-2026-103 is delayed by 3h 20m.
-                  </p>
-                </div>
-
-                <span>Now</span>
-
-              </div>
-
-
-              <div className="operator-alert orange-alert">
-
-                <div className="alert-icon">
-                  !
-                </div>
-
-                <div>
-                  <strong>ETA Risk</strong>
-
-                  <p>
-                    Route Chennai → Hyderabad has high traffic.
-                  </p>
-                </div>
-
-                <span>18m</span>
-
-              </div>
-
-
-              <div className="operator-alert purple-alert">
-
-                <div className="alert-icon">
-                  i
-                </div>
-
-                <div>
-                  <strong>Vehicle Update</strong>
-
-                  <p>
-                    Vehicle MH 12 CD 7842 requires inspection.
-                  </p>
-                </div>
-
-                <span>1h</span>
-
-              </div>
+              )}
 
             </div>
 
@@ -449,6 +919,7 @@ function OperatorDashboard() {
           <div className="operator-panel-header">
 
             <div>
+
               <span className="panel-label">
                 ACTIVE SHIPMENTS
               </span>
@@ -458,6 +929,7 @@ function OperatorDashboard() {
               <p>
                 Monitor active shipments and delivery progress.
               </p>
+
             </div>
 
             <Link
@@ -489,92 +961,149 @@ function OperatorDashboard() {
 
               <tbody>
 
-                {activeShipments.map((shipment) => (
+                {loading ? (
 
-                  <tr key={shipment.id}>
-
-                    <td>
-
-                      <div className="shipment-id">
-
-                        <span className="shipment-box">
-                          □
-                        </span>
-
-                        <div>
-                          <strong>{shipment.id}</strong>
-                          <small>{shipment.vehicle}</small>
-                        </div>
-
-                      </div>
-
+                  <tr>
+                    <td colSpan="6">
+                      Loading shipments...
                     </td>
-
-
-                    <td>
-                      <span className="route-text">
-                        {shipment.route}
-                      </span>
-                    </td>
-
-
-                    <td>
-                      <span className="driver-name">
-                        {shipment.driver}
-                      </span>
-                    </td>
-
-
-                    <td>
-
-                      <span
-                        className={`operator-status ${
-                          shipment.status === "Delayed"
-                            ? "delayed-status"
-                            : shipment.status === "Out for Delivery"
-                            ? "delivery-status"
-                            : "transit-status"
-                        }`}
-                      >
-                        <span></span>
-                        {shipment.status}
-                      </span>
-
-                    </td>
-
-
-                    <td>
-
-                      <div className="progress-cell">
-
-                        <div className="progress-bar">
-
-                          <span
-                            style={{
-                              width: `${shipment.progress}%`,
-                            }}
-                          ></span>
-
-                        </div>
-
-                        <small>
-                          {shipment.progress}%
-                        </small>
-
-                      </div>
-
-                    </td>
-
-
-                    <td>
-                      <span className="eta-text">
-                        {shipment.eta}
-                      </span>
-                    </td>
-
                   </tr>
 
-                ))}
+                ) : displayedShipments.length === 0 ? (
+
+                  <tr>
+                    <td colSpan="6">
+                      No active shipments assigned to this operator.
+                    </td>
+                  </tr>
+
+                ) : (
+
+                  displayedShipments.map((shipment) => {
+
+                    const status = getShipmentStatus(shipment);
+
+                    return (
+                      <tr key={shipment.id}>
+
+                        <td>
+
+                          <div className="shipment-id">
+
+                            <span className="shipment-box">
+                              □
+                            </span>
+
+                            <div>
+
+                              <strong>
+                                {getShipmentTrackingNumber(shipment)}
+                              </strong>
+
+                              <small>
+                                {getVehicle(shipment)}
+                              </small>
+
+                            </div>
+
+                          </div>
+
+                        </td>
+
+
+                        <td>
+
+                          <span className="route-text">
+                            {getRouteText(shipment)}
+                          </span>
+
+                        </td>
+
+
+                        <td>
+
+                          <span className="driver-name">
+                            {getOperatorName(shipment)}
+                          </span>
+
+                        </td>
+
+
+                        <td>
+
+                          <span
+                            className={`operator-status ${getStatusClass(
+                              shipment
+                            )}`}
+                          >
+                            <span></span>
+                            {status}
+                          </span>
+
+                        </td>
+
+
+                        <td>
+
+                          <div className="progress-cell">
+
+                            <div className="progress-bar">
+
+                              <span
+                                style={{
+                                  width:
+                                    normalizeStatus(
+                                      shipment?.status
+                                    ) === "DELIVERED"
+                                      ? "100%"
+                                      : normalizeStatus(
+                                            shipment?.status
+                                          ) === "IN_TRANSIT" ||
+                                        normalizeStatus(
+                                          shipment?.status
+                                        ) === "PICKED_UP"
+                                      ? "50%"
+                                      : "0%",
+                                }}
+                              ></span>
+
+                            </div>
+
+                            <small>
+                              {normalizeStatus(
+                                shipment?.status
+                              ) === "DELIVERED"
+                                ? "100%"
+                                : normalizeStatus(
+                                      shipment?.status
+                                    ) === "IN_TRANSIT" ||
+                                  normalizeStatus(
+                                    shipment?.status
+                                  ) === "PICKED_UP"
+                                ? "50%"
+                                : "—"}
+                            </small>
+
+                          </div>
+
+                        </td>
+
+
+                        <td>
+
+                          <span className="eta-text">
+                            {shipment?.eta
+                              ? formatDate(shipment.eta)
+                              : "Not available"}
+                          </span>
+
+                        </td>
+
+                      </tr>
+                    );
+                  })
+
+                )}
 
               </tbody>
 
@@ -596,11 +1125,13 @@ function OperatorDashboard() {
             <div className="operator-panel-header">
 
               <div>
+
                 <span className="panel-label">
                   ROUTE MANAGEMENT
                 </span>
 
                 <h2>Active Routes</h2>
+
               </div>
 
               <Link
@@ -615,42 +1146,72 @@ function OperatorDashboard() {
 
             <div className="routes-list">
 
-              {routes.map((route) => (
+              {loading ? (
 
-                <div
-                  className="route-item"
-                  key={route.route}
-                >
+                <div className="route-item">
+                  Loading routes...
+                </div>
 
-                  <div className="route-icon">
-                    ⌁
-                  </div>
+              ) : routeSummary.length === 0 ? (
 
+                <div className="route-item">
                   <div className="route-info">
-
                     <strong>
-                      {route.route}
+                      No route information available
                     </strong>
 
                     <span>
-                      {route.shipments} shipments · {route.distance}
+                      Routes will appear when route data exists
+                      for assigned shipments.
+                    </span>
+                  </div>
+                </div>
+
+              ) : (
+
+                routeSummary.map((route, index) => (
+
+                  <div
+                    className="route-item"
+                    key={`${route.route}-${index}`}
+                  >
+
+                    <div className="route-icon">
+                      ⌁
+                    </div>
+
+                    <div className="route-info">
+
+                      <strong>
+                        {route.route}
+                      </strong>
+
+                      <span>
+                        {route.shipments} shipment
+                        {route.shipments !== 1 ? "s" : ""}
+
+                        {route.distance
+                          ? ` · ${route.distance} km`
+                          : ""}
+                      </span>
+
+                    </div>
+
+                    <span
+                      className={
+                        route.status === "Attention"
+                          ? "route-status attention"
+                          : "route-status"
+                      }
+                    >
+                      {route.status}
                     </span>
 
                   </div>
 
-                  <span
-                    className={
-                      route.status === "Attention"
-                        ? "route-status attention"
-                        : "route-status"
-                    }
-                  >
-                    {route.status}
-                  </span>
+                ))
 
-                </div>
-
-              ))}
+              )}
 
             </div>
 
@@ -664,11 +1225,13 @@ function OperatorDashboard() {
             <div className="operator-panel-header">
 
               <div>
+
                 <span className="panel-label">
-                  FLEET STATUS
+                  OPERATOR STATUS
                 </span>
 
-                <h2>Fleet Overview</h2>
+                <h2>Operator Overview</h2>
+
               </div>
 
               <Link
@@ -684,19 +1247,40 @@ function OperatorDashboard() {
             <div className="fleet-main">
 
               <div className="fleet-number">
-                <strong>42</strong>
-                <span>Total Vehicles</span>
+
+                <strong>
+                  {loading ? "..." : shipments.length}
+                </strong>
+
+                <span>
+                  Assigned Shipments
+                </span>
+
               </div>
+
 
               <div className="fleet-utilization">
 
                 <div className="fleet-progress">
-                  <span style={{ width: "78%" }}></span>
+
+                  <span
+                    style={{
+                      width: `${onRoutePercentage}%`,
+                    }}
+                  ></span>
+
                 </div>
 
                 <div className="fleet-progress-info">
-                  <span>Fleet Utilization</span>
-                  <strong>78%</strong>
+
+                  <span>
+                    Shipment Activity
+                  </span>
+
+                  <strong>
+                    {onRoutePercentage}%
+                  </strong>
+
                 </div>
 
               </div>
@@ -707,21 +1291,47 @@ function OperatorDashboard() {
             <div className="fleet-stats">
 
               <div>
+
                 <span className="fleet-dot active"></span>
-                <p>Active</p>
-                <strong>33</strong>
+
+                <p>
+                  In Transit
+                </p>
+
+                <strong>
+                  {inTransitCount}
+                </strong>
+
               </div>
 
+
               <div>
+
                 <span className="fleet-dot available"></span>
-                <p>Available</p>
-                <strong>6</strong>
+
+                <p>
+                  Delivered
+                </p>
+
+                <strong>
+                  {deliveredCount}
+                </strong>
+
               </div>
 
+
               <div>
+
                 <span className="fleet-dot maintenance"></span>
-                <p>Maintenance</p>
-                <strong>3</strong>
+
+                <p>
+                  Delayed
+                </p>
+
+                <strong>
+                  {delayedCount}
+                </strong>
+
               </div>
 
             </div>
@@ -735,11 +1345,11 @@ function OperatorDashboard() {
 
         <section className="operator-quick-actions">
 
-          {/* Track Shipment */}
           <Link
             to="/operator/shipment-tracking"
             className="quick-action"
           >
+
             <span>▣</span>
 
             <div>
@@ -748,14 +1358,15 @@ function OperatorDashboard() {
             </div>
 
             <b>→</b>
+
           </Link>
 
 
-          {/* Track Driver */}
           <Link
             to="/operator/driver-tracking"
             className="quick-action"
           >
+
             <span>♙</span>
 
             <div>
@@ -764,14 +1375,15 @@ function OperatorDashboard() {
             </div>
 
             <b>→</b>
+
           </Link>
 
 
-          {/* Check Delays */}
           <Link
             to="/operator/eta-delay"
             className="quick-action"
           >
+
             <span>◷</span>
 
             <div>
@@ -780,14 +1392,15 @@ function OperatorDashboard() {
             </div>
 
             <b>→</b>
+
           </Link>
 
 
-          {/* Proof of Delivery */}
           <Link
             to="/operator/pod"
             className="quick-action"
           >
+
             <span>✓</span>
 
             <div>
@@ -796,6 +1409,7 @@ function OperatorDashboard() {
             </div>
 
             <b>→</b>
+
           </Link>
 
         </section>

@@ -1,65 +1,305 @@
+
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "./OperatorRouteManagement.css";
+import { apiRequest } from "../api";
 
-const routes = [
-  {
-    id: "RT-001",
-    route: "Hyderabad → Bengaluru",
-    shipments: 14,
-    distance: "575 km",
-    driver: "Arjun Kumar",
-    vehicle: "TS 09 AB 4521",
-    status: "On Route",
-    eta: "2h 18m",
-    progress: 72,
-  },
-  {
-    id: "RT-002",
-    route: "Mumbai → Pune",
-    shipments: 9,
-    distance: "150 km",
-    driver: "Rahul Sharma",
-    vehicle: "MH 12 CD 7842",
-    status: "On Route",
-    eta: "48m",
-    progress: 91,
-  },
-  {
-    id: "RT-003",
-    route: "Chennai → Hyderabad",
-    shipments: 11,
-    distance: "630 km",
-    driver: "Vijay Reddy",
-    vehicle: "TN 38 EF 2910",
-    status: "Attention",
-    eta: "4h 26m",
-    progress: 61,
-  },
-  {
-    id: "RT-004",
-    route: "Delhi → Jaipur",
-    shipments: 7,
-    distance: "280 km",
-    driver: "Amit Singh",
-    vehicle: "DL 01 GH 6328",
-    status: "On Route",
-    eta: "3h 05m",
-    progress: 64,
-  },
-  {
-    id: "RT-005",
-    route: "Bengaluru → Chennai",
-    shipments: 8,
-    distance: "350 km",
-    driver: "Suresh Babu",
-    vehicle: "KA 05 JK 8124",
-    status: "On Route",
-    eta: "1h 42m",
-    progress: 84,
-  },
-];
+const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
+
+function formatDistance(distance) {
+  if (distance === null || distance === undefined || Number.isNaN(Number(distance))) {
+    return "Data unavailable";
+  }
+
+  return `${Number(distance).toFixed(0)} km`;
+}
+
+function formatDuration(minutes) {
+  if (
+    minutes === null ||
+    minutes === undefined ||
+    Number.isNaN(Number(minutes))
+  ) {
+    return "Data unavailable";
+  }
+
+  const totalMinutes = Math.round(Number(minutes));
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
+
+function normalizeStatus(status) {
+  return String(status || "").toUpperCase();
+}
+
+function getRouteStatus(shipmentStatus) {
+  const status = normalizeStatus(shipmentStatus);
+
+  if (status === "FAILED_DELIVERY") {
+    return "Attention";
+  }
+
+  if (status === "OUT_FOR_DELIVERY" || status === "IN_TRANSIT") {
+    return "On Route";
+  }
+
+  if (status === "PICKED_UP") {
+    return "On Route";
+  }
+
+  if (status === "DELIVERED") {
+    return "Delivered";
+  }
+
+  if (status === "CANCELLED") {
+    return "Cancelled";
+  }
+
+  return shipmentStatus || "Data unavailable";
+}
+
+function getProgress(status) {
+  const normalized = normalizeStatus(status);
+
+  switch (normalized) {
+    case "CREATED":
+      return 0;
+    case "PICKED_UP":
+      return 25;
+    case "IN_TRANSIT":
+      return 50;
+    case "OUT_FOR_DELIVERY":
+      return 75;
+    case "DELIVERED":
+      return 100;
+    case "FAILED_DELIVERY":
+      return 75;
+    case "CANCELLED":
+      return 0;
+    default:
+      return null;
+  }
+}
 
 function OperatorRouteManagement() {
+  const [shipments, setShipments] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRouteData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const shipmentData = await apiRequest("/api/shipments");
+
+        const shipmentList = Array.isArray(shipmentData)
+          ? shipmentData
+          : shipmentData?.content || shipmentData?.data || [];
+
+        if (cancelled) return;
+
+        setShipments(shipmentList);
+
+        /*
+         * Route data is stored against shipments.
+         * Fetch the saved route for every shipment.
+         */
+        const routeResults = await Promise.allSettled(
+          shipmentList.map(async (shipment) => {
+            try {
+              const route = await apiRequest(
+                `/api/routes/shipment/${shipment.id}`
+              );
+
+              if (!route) return null;
+
+              return {
+                ...route,
+                shipment,
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        if (cancelled) return;
+
+        const validRoutes = routeResults
+          .filter((result) => result.status === "fulfilled")
+          .map((result) => result.value)
+          .filter(Boolean);
+
+        setRoutes(validRoutes);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Unable to load route data.");
+          setShipments([]);
+          setRoutes([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadRouteData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /*
+   * Only shipments that are actually active are considered
+   * active routes.
+   *
+   * Delivered and cancelled shipments are not counted as
+   * active routes.
+   */
+  const activeRoutes = useMemo(() => {
+    return routes.filter((route) => {
+      const status = normalizeStatus(route.shipment?.status);
+
+      return !TERMINAL_STATUSES.includes(status);
+    });
+  }, [routes]);
+
+  const activeShipments = useMemo(() => {
+    return shipments.filter((shipment) => {
+      const status = normalizeStatus(shipment.status);
+
+      return !TERMINAL_STATUSES.includes(status);
+    });
+  }, [shipments]);
+
+  const attentionRoutes = useMemo(() => {
+    return activeRoutes.filter((route) => {
+      const status = normalizeStatus(route.shipment?.status);
+
+      return status === "FAILED_DELIVERY";
+    });
+  }, [activeRoutes]);
+
+  const onTimeRoutes = useMemo(() => {
+    return activeRoutes.filter((route) => {
+      const status = normalizeStatus(route.shipment?.status);
+
+      return [
+        "PICKED_UP",
+        "IN_TRANSIT",
+        "OUT_FOR_DELIVERY",
+      ].includes(status);
+    });
+  }, [activeRoutes]);
+
+  const efficiency = useMemo(() => {
+    if (activeRoutes.length === 0) return 0;
+
+    return Math.round(
+      (onTimeRoutes.length / activeRoutes.length) * 100
+    );
+  }, [activeRoutes, onTimeRoutes]);
+
+  const displayRoutes = useMemo(() => {
+    return activeRoutes.map((route) => {
+      const shipment = route.shipment || {};
+      const status = normalizeStatus(shipment.status);
+
+      const operatorName =
+        route.assignedOperatorName ||
+        shipment.assignedOperator?.fullName ||
+        shipment.assignedOperator?.name ||
+        "Data unavailable";
+
+      const progress = getProgress(status);
+
+      return {
+        id: route.id || shipment.id,
+        route:
+          route.origin && route.destination
+            ? `${route.origin} → ${route.destination}`
+            : "Route unavailable",
+
+        shipments: 1,
+
+        distance: formatDistance(route.distanceKm),
+
+        driver: operatorName,
+
+        /*
+         * Vehicle information does not exist in the current
+         * Route/Shipment backend model.
+         */
+        vehicle: "Data unavailable",
+
+        status: getRouteStatus(shipment.status),
+
+        /*
+         * Current backend does not expose a persisted live ETA
+         * for the route.
+         */
+        eta: formatDuration(route.estimatedDurationMinutes),
+
+        progress,
+
+        shipmentStatus: shipment.status,
+        trackingNumber: shipment.trackingNumber,
+      };
+    });
+  }, [activeRoutes]);
+
+  const fastestRoute = useMemo(() => {
+    if (displayRoutes.length === 0) return null;
+
+    return displayRoutes.reduce((fastest, current) => {
+      const currentDistance = Number(
+        current.distance.replace(/[^\d.]/g, "")
+      );
+
+      const fastestDistance = Number(
+        fastest.distance.replace(/[^\d.]/g, "")
+      );
+
+      if (Number.isNaN(currentDistance)) return fastest;
+      if (Number.isNaN(fastestDistance)) return current;
+
+      return currentDistance < fastestDistance ? current : fastest;
+    });
+  }, [displayRoutes]);
+
+  const longestRoute = useMemo(() => {
+    if (displayRoutes.length === 0) return null;
+
+    return displayRoutes.reduce((longest, current) => {
+      const currentDistance = Number(
+        current.distance.replace(/[^\d.]/g, "")
+      );
+
+      const longestDistance = Number(
+        longest.distance.replace(/[^\d.]/g, "")
+      );
+
+      if (Number.isNaN(currentDistance)) return longest;
+      if (Number.isNaN(longestDistance)) return current;
+
+      return currentDistance > longestDistance ? current : longest;
+    });
+  }, [displayRoutes]);
+
   return (
     <div className="route-page">
 
@@ -193,7 +433,7 @@ function OperatorRouteManagement() {
 
             <button className="route-notification">
               ♢
-              <span>3</span>
+              <span>{attentionRoutes.length}</span>
             </button>
 
           </div>
@@ -213,7 +453,7 @@ function OperatorRouteManagement() {
 
             <div>
               <span>Active Routes</span>
-              <strong>18</strong>
+              <strong>{activeRoutes.length}</strong>
               <small>Currently operating</small>
             </div>
 
@@ -228,7 +468,7 @@ function OperatorRouteManagement() {
 
             <div>
               <span>Shipments On Route</span>
-              <strong>48</strong>
+              <strong>{activeShipments.length}</strong>
               <small>Across active routes</small>
             </div>
 
@@ -243,8 +483,14 @@ function OperatorRouteManagement() {
 
             <div>
               <span>On-Time Routes</span>
-              <strong>15</strong>
-              <small>83.3% of active routes</small>
+              <strong>{onTimeRoutes.length}</strong>
+
+              <small>
+                {activeRoutes.length > 0
+                  ? `${efficiency}% of active routes`
+                  : "No active routes"}
+              </small>
+
             </div>
 
           </div>
@@ -258,7 +504,9 @@ function OperatorRouteManagement() {
 
             <div>
               <span>Attention Needed</span>
-              <strong>03</strong>
+              <strong>
+                {String(attentionRoutes.length).padStart(2, "0")}
+              </strong>
               <small>Requires action</small>
             </div>
 
@@ -293,40 +541,58 @@ function OperatorRouteManagement() {
 
               <div className="map-grid"></div>
 
-              <div className="map-node node-hyd">
-                <span></span>
-                <strong>Hyderabad</strong>
-              </div>
+              {displayRoutes.length === 0 ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#69738b",
+                    fontSize: "12px",
+                  }}
+                >
+                  No active routes available.
+                </div>
+              ) : (
+                <>
+                  <div className="map-node node-hyd">
+                    <span></span>
+                    <strong>Hyderabad</strong>
+                  </div>
 
-              <div className="map-node node-blr">
-                <span></span>
-                <strong>Bengaluru</strong>
-              </div>
+                  <div className="map-node node-blr">
+                    <span></span>
+                    <strong>Bengaluru</strong>
+                  </div>
 
-              <div className="map-node node-mum">
-                <span></span>
-                <strong>Mumbai</strong>
-              </div>
+                  <div className="map-node node-mum">
+                    <span></span>
+                    <strong>Mumbai</strong>
+                  </div>
 
-              <div className="map-node node-pune">
-                <span></span>
-                <strong>Pune</strong>
-              </div>
+                  <div className="map-node node-pune">
+                    <span></span>
+                    <strong>Pune</strong>
+                  </div>
 
-              <div className="map-node node-chn">
-                <span></span>
-                <strong>Chennai</strong>
-              </div>
+                  <div className="map-node node-chn">
+                    <span></span>
+                    <strong>Chennai</strong>
+                  </div>
 
-              <div className="map-node node-del">
-                <span></span>
-                <strong>Delhi</strong>
-              </div>
+                  <div className="map-node node-del">
+                    <span></span>
+                    <strong>Delhi</strong>
+                  </div>
 
-              <div className="route-line line-one"></div>
-              <div className="route-line line-two"></div>
-              <div className="route-line line-three"></div>
-              <div className="route-line line-four"></div>
+                  <div className="route-line line-one"></div>
+                  <div className="route-line line-two"></div>
+                  <div className="route-line line-three"></div>
+                  <div className="route-line line-four"></div>
+                </>
+              )}
 
             </div>
 
@@ -349,10 +615,19 @@ function OperatorRouteManagement() {
 
             <div className="efficiency-main">
 
-              <div className="efficiency-ring">
+              <div
+                className="efficiency-ring"
+                style={{
+                  background: `conic-gradient(
+                    #36d991 0deg,
+                    #36d991 ${efficiency * 3.6}deg,
+                    #292e3c ${efficiency * 3.6}deg
+                  )`,
+                }}
+              >
 
                 <div>
-                  <strong>92.6%</strong>
+                  <strong>{efficiency}%</strong>
                   <span>Efficiency</span>
                 </div>
 
@@ -365,19 +640,19 @@ function OperatorRouteManagement() {
               <div>
                 <span className="efficiency-dot green-dot"></span>
                 <p>On-Time Routes</p>
-                <strong>15</strong>
+                <strong>{onTimeRoutes.length}</strong>
               </div>
 
               <div>
                 <span className="efficiency-dot orange-dot"></span>
                 <p>At Risk</p>
-                <strong>2</strong>
+                <strong>0</strong>
               </div>
 
               <div>
                 <span className="efficiency-dot red-dot"></span>
                 <p>Delayed</p>
-                <strong>1</strong>
+                <strong>{attentionRoutes.length}</strong>
               </div>
 
             </div>
@@ -430,87 +705,144 @@ function OperatorRouteManagement() {
 
               <tbody>
 
-                {routes.map((route) => (
+                {loading ? (
 
-                  <tr key={route.id}>
-
-                    <td>
-                      <div className="route-name">
-
-                        <span className="route-table-icon">
-                          ⌁
-                        </span>
-
-                        <div>
-                          <strong>{route.route}</strong>
-                          <small>
-                            {route.id} · {route.distance}
-                          </small>
-                        </div>
-
-                      </div>
+                  <tr>
+                    <td
+                      colSpan="7"
+                      style={{
+                        textAlign: "center",
+                        padding: "35px",
+                      }}
+                    >
+                      Loading route data...
                     </td>
-
-                    <td>
-                      <span className="shipment-count">
-                        {route.shipments}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span className="driver-text">
-                        {route.driver}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span className="vehicle-text">
-                        {route.vehicle}
-                      </span>
-                    </td>
-
-                    <td>
-
-                      <span
-                        className={`route-status ${
-                          route.status === "Attention"
-                            ? "attention-status"
-                            : "onroute-status"
-                        }`}
-                      >
-                        <span></span>
-                        {route.status}
-                      </span>
-
-                    </td>
-
-                    <td>
-
-                      <div className="route-progress">
-
-                        <div className="route-progress-bar">
-                          <span
-                            style={{
-                              width: `${route.progress}%`,
-                            }}
-                          ></span>
-                        </div>
-
-                        <small>{route.progress}%</small>
-
-                      </div>
-
-                    </td>
-
-                    <td>
-                      <span className="route-eta">
-                        {route.eta}
-                      </span>
-                    </td>
-
                   </tr>
 
-                ))}
+                ) : error ? (
+
+                  <tr>
+                    <td
+                      colSpan="7"
+                      style={{
+                        textAlign: "center",
+                        padding: "35px",
+                        color: "#ff6678",
+                      }}
+                    >
+                      {error}
+                    </td>
+                  </tr>
+
+                ) : displayRoutes.length === 0 ? (
+
+                  <tr>
+                    <td
+                      colSpan="7"
+                      style={{
+                        textAlign: "center",
+                        padding: "35px",
+                      }}
+                    >
+                      No active routes available.
+                    </td>
+                  </tr>
+
+                ) : (
+
+                  displayRoutes.map((route) => (
+
+                    <tr key={route.id}>
+
+                      <td>
+                        <div className="route-name">
+
+                          <span className="route-table-icon">
+                            ⌁
+                          </span>
+
+                          <div>
+                            <strong>{route.route}</strong>
+
+                            <small>
+                              {route.id} · {route.distance}
+                            </small>
+                          </div>
+
+                        </div>
+                      </td>
+
+                      <td>
+                        <span className="shipment-count">
+                          {route.shipments}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className="driver-text">
+                          {route.driver}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span className="vehicle-text">
+                          {route.vehicle}
+                        </span>
+                      </td>
+
+                      <td>
+
+                        <span
+                          className={`route-status ${
+                            route.status === "Attention"
+                              ? "attention-status"
+                              : "onroute-status"
+                          }`}
+                        >
+                          <span></span>
+                          {route.status}
+                        </span>
+
+                      </td>
+
+                      <td>
+
+                        <div className="route-progress">
+
+                          <div className="route-progress-bar">
+
+                            <span
+                              style={{
+                                width:
+                                  route.progress === null
+                                    ? "0%"
+                                    : `${route.progress}%`,
+                              }}
+                            ></span>
+
+                          </div>
+
+                          <small>
+                            {route.progress === null
+                              ? "Data unavailable"
+                              : `${route.progress}%`}
+                          </small>
+
+                        </div>
+
+                      </td>
+
+                      <td>
+                        <span className="route-eta">
+                          {route.eta}
+                        </span>
+                      </td>
+
+                    </tr>
+
+                  ))
+
+                )}
 
               </tbody>
 
@@ -532,9 +864,21 @@ function OperatorRouteManagement() {
             </div>
 
             <div>
+
               <span>Fastest Route</span>
-              <strong>Mumbai → Pune</strong>
-              <small>150 km · 48 min remaining</small>
+
+              <strong>
+                {fastestRoute
+                  ? fastestRoute.route
+                  : "Data unavailable"}
+              </strong>
+
+              <small>
+                {fastestRoute
+                  ? `${fastestRoute.distance} · ${fastestRoute.eta}`
+                  : "No active route data"}
+              </small>
+
             </div>
 
           </div>
@@ -547,9 +891,21 @@ function OperatorRouteManagement() {
             </div>
 
             <div>
+
               <span>Longest Route</span>
-              <strong>Chennai → Hyderabad</strong>
-              <small>630 km · 4h 26m remaining</small>
+
+              <strong>
+                {longestRoute
+                  ? longestRoute.route
+                  : "Data unavailable"}
+              </strong>
+
+              <small>
+                {longestRoute
+                  ? `${longestRoute.distance} · ${longestRoute.eta}`
+                  : "No active route data"}
+              </small>
+
             </div>
 
           </div>
@@ -562,9 +918,24 @@ function OperatorRouteManagement() {
             </div>
 
             <div>
+
               <span>Route Attention</span>
-              <strong>Chennai → Hyderabad</strong>
-              <small>Traffic delay detected</small>
+
+              <strong>
+                {attentionRoutes.length > 0
+                  ? displayRoutes.find(
+                      (route) =>
+                        route.status === "Attention"
+                    )?.route || "Attention required"
+                  : "No attention required"}
+              </strong>
+
+              <small>
+                {attentionRoutes.length > 0
+                  ? "Shipment requires attention"
+                  : "No active route exceptions"}
+              </small>
+
             </div>
 
           </div>
@@ -578,3 +949,4 @@ function OperatorRouteManagement() {
 }
 
 export default OperatorRouteManagement;
+

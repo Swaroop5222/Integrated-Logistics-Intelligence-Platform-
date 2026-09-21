@@ -1,74 +1,376 @@
+
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api";
 import "./PackageInformation.css";
 
-const packages = [
-  {
-    id: "PKG-2026-001",
-    tracking: "TRK-2026-101",
-    type: "Box",
-    quantity: 2,
-    weight: "12.5 kg",
-    dimensions: "40 × 30 × 25 cm",
-    category: "Electronics",
-    value: "₹45,000",
-    status: "In Transit",
-  },
-  {
-    id: "PKG-2026-002",
-    tracking: "TRK-2026-102",
-    type: "Pallet",
-    quantity: 1,
-    weight: "85 kg",
-    dimensions: "120 × 80 × 100 cm",
-    category: "Industrial",
-    value: "₹78,500",
-    status: "Delivered",
-  },
-  {
-    id: "PKG-2026-003",
-    tracking: "TRK-2026-103",
-    type: "Box",
-    quantity: 4,
-    weight: "24 kg",
-    dimensions: "50 × 40 × 30 cm",
-    category: "Food Products",
-    value: "₹18,200",
-    status: "Picked Up",
-  },
-  {
-    id: "PKG-2026-004",
-    tracking: "TRK-2026-104",
-    type: "Crate",
-    quantity: 1,
-    weight: "120 kg",
-    dimensions: "150 × 90 × 80 cm",
-    category: "Machinery",
-    value: "₹1,25,000",
-    status: "Delayed",
-  },
-  {
-    id: "PKG-2026-005",
-    tracking: "TRK-2026-105",
-    type: "Envelope",
-    quantity: 3,
-    weight: "2.4 kg",
-    dimensions: "35 × 25 × 5 cm",
-    category: "Documents",
-    value: "₹8,500",
-    status: "In Transit",
-  },
-];
-
 function PackageInformation() {
+  const [shipments, setShipments] = useState([]);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+
+  useEffect(() => {
+    loadPackageData();
+  }, []);
+
+  const loadPackageData = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [currentUser, shipmentData] = await Promise.all([
+        apiRequest("/api/users/me"),
+        apiRequest("/api/shipments"),
+      ]);
+
+      setUser(currentUser);
+
+      const shipmentList = Array.isArray(shipmentData)
+        ? shipmentData
+        : shipmentData?.content ||
+          shipmentData?.shipments ||
+          shipmentData?.data ||
+          [];
+
+      setShipments(shipmentList);
+    } catch (err) {
+      console.error("Failed to load package information:", err);
+      setError(err.message || "Unable to load package information.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * Backend field names can differ depending on the DTO/entity mapping.
+   * These helpers read the available backend value without creating
+   * dummy package information.
+   */
+  const getValue = (shipment, fields) => {
+    for (const field of fields) {
+      const value = shipment?.[field];
+
+      if (
+        value !== undefined &&
+        value !== null &&
+        value !== ""
+      ) {
+        return value;
+      }
+    }
+
+    return null;
+  };
+
+  const getPackageType = (shipment) =>
+    getValue(shipment, [
+      "packageType",
+      "type",
+      "package_type",
+    ]);
+
+  const getQuantity = (shipment) =>
+    getValue(shipment, [
+      "quantity",
+      "packageQuantity",
+      "numberOfPackages",
+      "numberOfItems",
+      "packageCount",
+    ]);
+
+  const getWeight = (shipment) =>
+    getValue(shipment, [
+      "weight",
+      "packageWeight",
+      "weightKg",
+      "packageWeightKg",
+    ]);
+
+  const getDimensions = (shipment) => {
+    const directValue = getValue(shipment, [
+      "dimensions",
+      "dimension",
+      "packageDimensions",
+    ]);
+
+    if (directValue) {
+      if (typeof directValue === "object") {
+        const length = directValue.length ?? directValue.l;
+        const width = directValue.width ?? directValue.w;
+        const height = directValue.height ?? directValue.h;
+
+        if (length && width && height) {
+          return `${length} × ${width} × ${height} cm`;
+        }
+      }
+
+      return String(directValue);
+    }
+
+    const length = getValue(shipment, [
+      "length",
+      "packageLength",
+      "lengthCm",
+    ]);
+
+    const width = getValue(shipment, [
+      "width",
+      "packageWidth",
+      "widthCm",
+    ]);
+
+    const height = getValue(shipment, [
+      "height",
+      "packageHeight",
+      "heightCm",
+    ]);
+
+    if (length && width && height) {
+      return `${length} × ${width} × ${height} cm`;
+    }
+
+    return null;
+  };
+
+  const getCategory = (shipment) =>
+    getValue(shipment, [
+      "category",
+      "packageCategory",
+      "package_category",
+      "productCategory",
+    ]);
+
+  const getDeclaredValue = (shipment) =>
+    getValue(shipment, [
+      "declaredValue",
+      "packageValue",
+      "declaredAmount",
+      "value",
+    ]);
+
+  const formatWeight = (value) => {
+    if (value === null || value === undefined) {
+      return "Data unavailable";
+    }
+
+    if (typeof value === "number") {
+      return `${value} kg`;
+    }
+
+    const text = String(value);
+
+    if (/kg|g$/i.test(text.trim())) {
+      return text;
+    }
+
+    return `${text} kg`;
+  };
+
+  const formatValue = (value) => {
+    if (value === null || value === undefined) {
+      return "Data unavailable";
+    }
+
+    if (typeof value === "number") {
+      return `₹${value.toLocaleString("en-IN")}`;
+    }
+
+    return String(value);
+  };
+
+  const formatStatus = (status) => {
+    if (!status) return "Data unavailable";
+
+    return String(status)
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const getStatusClass = (status) => {
+    switch (String(status || "").toUpperCase()) {
+      case "IN_TRANSIT":
+        return "in-transit";
+
+      case "DELIVERED":
+        return "delivered";
+
+      case "PICKED_UP":
+        return "picked-up";
+
+      case "FAILED_DELIVERY":
+      case "DELAYED":
+        return "delayed";
+
+      default:
+        return "";
+    }
+  };
+
+  const packageRecords = useMemo(() => {
+    return shipments.map((shipment) => ({
+      ...shipment,
+
+      packageId:
+        getValue(shipment, [
+          "packageId",
+          "packageID",
+          "packageNumber",
+        ]) || `PKG-${String(shipment.id).padStart(3, "0")}`,
+
+      trackingId:
+        getValue(shipment, [
+          "trackingNumber",
+          "trackingId",
+        ]) || "Data unavailable",
+
+      type: getPackageType(shipment),
+      quantity: getQuantity(shipment),
+      weight: getWeight(shipment),
+      dimensions: getDimensions(shipment),
+      category: getCategory(shipment),
+      declaredValue: getDeclaredValue(shipment),
+
+      status:
+        getValue(shipment, ["status"]) || "Data unavailable",
+    }));
+  }, [shipments]);
+
+  const packageTypes = useMemo(() => {
+    return [
+      ...new Set(
+        packageRecords
+          .map((item) => item.type)
+          .filter(Boolean)
+      ),
+    ];
+  }, [packageRecords]);
+
+  const categories = useMemo(() => {
+    return [
+      ...new Set(
+        packageRecords
+          .map((item) => item.category)
+          .filter(Boolean)
+      ),
+    ];
+  }, [packageRecords]);
+
+  const filteredPackages = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return packageRecords.filter((item) => {
+      const matchesSearch =
+        !query ||
+        String(item.packageId).toLowerCase().includes(query) ||
+        String(item.trackingId).toLowerCase().includes(query) ||
+        String(item.type || "").toLowerCase().includes(query) ||
+        String(item.category || "").toLowerCase().includes(query);
+
+      const matchesType =
+        typeFilter === "ALL" ||
+        String(item.type || "") === typeFilter;
+
+      const matchesCategory =
+        categoryFilter === "ALL" ||
+        String(item.category || "") === categoryFilter;
+
+      return (
+        matchesSearch &&
+        matchesType &&
+        matchesCategory
+      );
+    });
+  }, [
+    packageRecords,
+    search,
+    typeFilter,
+    categoryFilter,
+  ]);
+
+  const totalPackages = packageRecords.length;
+
+  const totalWeight = useMemo(() => {
+    const weights = packageRecords
+      .map((item) => item.weight)
+      .filter(
+        (value) =>
+          value !== null &&
+          value !== undefined &&
+          value !== ""
+      )
+      .map((value) => {
+        const number = parseFloat(
+          String(value).replace(/,/g, "")
+        );
+
+        return Number.isFinite(number) ? number : null;
+      })
+      .filter((value) => value !== null);
+
+    if (!weights.length) {
+      return "Data unavailable";
+    }
+
+    const total = weights.reduce(
+      (sum, value) => sum + value,
+      0
+    );
+
+    if (total >= 1000) {
+      return `${(total / 1000).toFixed(1)}T`;
+    }
+
+    return `${total.toFixed(1)} kg`;
+  }, [packageRecords]);
+
+  const electronicsCount = packageRecords.filter(
+    (item) =>
+      String(item.category || "").toLowerCase() ===
+        "electronics" ||
+      String(item.category || "")
+        .toLowerCase()
+        .includes("electronics")
+  ).length;
+
+  const highValueCount = packageRecords.filter((item) => {
+    if (
+      item.declaredValue === null ||
+      item.declaredValue === undefined
+    ) {
+      return false;
+    }
+
+    const value = parseFloat(
+      String(item.declaredValue)
+        .replace(/₹/g, "")
+        .replace(/,/g, "")
+    );
+
+    return Number.isFinite(value) && value >= 50000;
+  }).length;
+
+  const displayName =
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    user?.email?.split("@")[0] ||
+    "Business Client";
+
+  const avatarLetter =
+    displayName?.charAt(0)?.toUpperCase() || "B";
+
   return (
     <div className="package-info-page">
 
       {/* SIDEBAR */}
-
       <aside className="package-sidebar">
 
         <div className="package-logo">
-          <div className="package-logo-icon">S</div>
+          <div className="package-logo-icon">⌂</div>
 
           <div>
             <h2>ShipTrack Pro</h2>
@@ -81,23 +383,34 @@ function PackageInformation() {
         </div>
 
         <nav>
-
-          <Link to="/dashboard/business" className="package-nav">
+          <Link
+            to="/dashboard/business"
+            className="package-nav"
+          >
             <span>⌂</span>
             Overview
           </Link>
 
-          <Link to="/business/create-shipment" className="package-nav">
+          <Link
+            to="/business/create-shipment"
+            className="package-nav"
+          >
             <span>＋</span>
             Create Shipment
           </Link>
 
-          <Link to="/business/shipment-management" className="package-nav">
+          <Link
+            to="/business/shipment-management"
+            className="package-nav"
+          >
             <span>▣</span>
             Shipment Management
           </Link>
 
-          <Link to="/business/shipment-history" className="package-nav">
+          <Link
+            to="/business/shipment-history"
+            className="package-nav"
+          >
             <span>◷</span>
             Shipment History
           </Link>
@@ -110,49 +423,71 @@ function PackageInformation() {
             Package Information
           </Link>
 
-          <Link to="/business/tracking" className="package-nav">
+          <Link
+            to="/business/tracking"
+            className="package-nav"
+          >
             <span>⌖</span>
             Tracking
           </Link>
 
-          <Link to="/business/delivery-performance" className="package-nav">
+          <Link
+            to="/business/delivery-performance"
+            className="package-nav"
+          >
             <span>↗</span>
             Delivery Performance
           </Link>
 
-          <Link to="/business/delay-analysis" className="package-nav">
+          <Link
+            to="/business/delay-analysis"
+            className="package-nav"
+          >
             <span>!</span>
             Delay Analysis
           </Link>
 
-          <Link to="/business/logistics-overview" className="package-nav">
+          <Link
+            to="/business/logistics-overview"
+            className="package-nav"
+          >
             <span>◎</span>
             Logistics Overview
           </Link>
 
-          <Link to="/business/customer-activity" className="package-nav">
+          <Link
+            to="/business/customer-activity"
+            className="package-nav"
+          >
             <span>♙</span>
             Customer Activity
           </Link>
 
-          <Link to="/business/reports" className="package-nav">
+          <Link
+            to="/business/reports"
+            className="package-nav"
+          >
             <span>▥</span>
             Reports & Export
           </Link>
-
         </nav>
 
-        <Link to="/login" className="package-logout">
+        <Link
+          to="/login"
+          className="package-logout"
+          onClick={() => {
+            localStorage.removeItem("shiptrackToken");
+            localStorage.removeItem("shiptrackUser");
+          }}
+        >
           ⇥ Logout
         </Link>
-
       </aside>
 
-
       {/* MAIN */}
-
       <main className="package-main">
 
+        {/* HEADER */}
         <header className="package-header">
 
           <div>
@@ -163,67 +498,86 @@ function PackageInformation() {
             <h1>Package Information</h1>
 
             <p>
-              View package dimensions, weight, category and shipment details.
+              View package dimensions, weight, category and
+              shipment details.
             </p>
           </div>
 
           <div className="package-profile">
 
-  <div className="package-avatar">
-    {JSON.parse(localStorage.getItem("user"))?.fullName?.charAt(0) || "U"}
-  </div>
+            <div>
+              <strong>{displayName}</strong>
+              <span>Business Client</span>
+            </div>
 
-  <div>
-    <strong>
-      {JSON.parse(localStorage.getItem("user"))?.fullName || "User"}
-    </strong>
-    <span>Business Client</span>
-  </div>
+            <div className="package-avatar">
+              {avatarLetter}
+            </div>
 
-</div>
-
+          </div>
         </header>
 
-
         {/* SUMMARY */}
-
         <section className="package-summary">
 
           <div className="package-summary-card">
             <span>Total Packages</span>
-            <strong>256</strong>
-            <small>Across all shipments</small>
+
+            <strong>
+              {loading ? "..." : totalPackages}
+            </strong>
+
+            <small>
+              Across all shipments
+            </small>
           </div>
 
           <div className="package-summary-card">
             <span>Total Weight</span>
-            <strong>4.8T</strong>
-            <small>Current shipment volume</small>
+
+            <strong>
+              {loading ? "..." : totalWeight}
+            </strong>
+
+            <small>
+              Current shipment volume
+            </small>
           </div>
 
           <div className="package-summary-card">
             <span>Electronics</span>
-            <strong>82</strong>
-            <small>Package category</small>
+
+            <strong>
+              {loading ? "..." : electronicsCount}
+            </strong>
+
+            <small>
+              Package category
+            </small>
           </div>
 
           <div className="package-summary-card">
             <span>High Value</span>
-            <strong>24</strong>
-            <small>Insurance required</small>
+
+            <strong>
+              {loading ? "..." : highValueCount}
+            </strong>
+
+            <small>
+              Based on declared value
+            </small>
           </div>
 
         </section>
 
-
-        {/* PACKAGE TABLE */}
-
+        {/* PACKAGE DATABASE */}
         <section className="package-panel">
 
           <div className="package-panel-header">
 
             <div>
               <span>PACKAGE DATABASE</span>
+
               <h2>Package Records</h2>
             </div>
 
@@ -236,9 +590,7 @@ function PackageInformation() {
 
           </div>
 
-
-          {/* FILTER BAR */}
-
+          {/* FILTERS */}
           <div className="package-filter-bar">
 
             <div className="package-search">
@@ -247,35 +599,60 @@ function PackageInformation() {
               <input
                 type="text"
                 placeholder="Search package or tracking ID..."
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
               />
             </div>
 
-            <select className="package-filter">
-              <option>All Package Types</option>
-              <option>Box</option>
-              <option>Envelope</option>
-              <option>Pallet</option>
-              <option>Crate</option>
+            <select
+              className="package-filter"
+              value={typeFilter}
+              onChange={(event) =>
+                setTypeFilter(event.target.value)
+              }
+            >
+              <option value="ALL">
+                All Package Types
+              </option>
+
+              {packageTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
             </select>
 
-            <select className="package-filter">
-              <option>All Categories</option>
-              <option>Electronics</option>
-              <option>Industrial</option>
-              <option>Food Products</option>
-              <option>Documents</option>
-              <option>Machinery</option>
+            <select
+              className="package-filter"
+              value={categoryFilter}
+              onChange={(event) =>
+                setCategoryFilter(event.target.value)
+              }
+            >
+              <option value="ALL">
+                All Categories
+              </option>
+
+              {categories.map((category) => (
+                <option
+                  key={category}
+                  value={category}
+                >
+                  {category}
+                </option>
+              ))}
             </select>
 
           </div>
 
-
+          {/* TABLE */}
           <div className="package-table-wrapper">
 
             <table className="package-table">
 
               <thead>
-
                 <tr>
                   <th>PACKAGE ID</th>
                   <th>TRACKING ID</th>
@@ -287,68 +664,112 @@ function PackageInformation() {
                   <th>VALUE</th>
                   <th>STATUS</th>
                 </tr>
-
               </thead>
 
               <tbody>
 
-                {packages.map((item) => (
-
-                  <tr key={item.id}>
-
-                    <td>
-                      <strong>{item.id}</strong>
+                {loading && (
+                  <tr>
+                    <td colSpan="9">
+                      Loading package information...
                     </td>
-
-                    <td>
-                      <span className="tracking-id">
-                        {item.tracking}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span className="package-type">
-                        {item.type}
-                      </span>
-                    </td>
-
-                    <td>
-                      {item.quantity}
-                    </td>
-
-                    <td>
-                      <strong className="weight">
-                        {item.weight}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {item.dimensions}
-                    </td>
-
-                    <td>
-                      <span className="category">
-                        {item.category}
-                      </span>
-                    </td>
-
-                    <td>
-                      {item.value}
-                    </td>
-
-                    <td>
-                      <span
-                        className={`package-status ${item.status
-                          .toLowerCase()
-                          .replace(" ", "-")}`}
-                      >
-                        ● {item.status}
-                      </span>
-                    </td>
-
                   </tr>
+                )}
 
-                ))}
+                {!loading && error && (
+                  <tr>
+                    <td colSpan="9">
+                      {error}
+                    </td>
+                  </tr>
+                )}
+
+                {!loading &&
+                  !error &&
+                  filteredPackages.length === 0 && (
+                    <tr>
+                      <td colSpan="9">
+                        No package records found.
+                      </td>
+                    </tr>
+                  )}
+
+                {!loading &&
+                  !error &&
+                  filteredPackages.map((packageItem) => {
+
+                    const statusClass =
+                      getStatusClass(
+                        packageItem.status
+                      );
+
+                    return (
+                      <tr key={packageItem.id}>
+
+                        <td>
+                          <strong>
+                            {packageItem.packageId}
+                          </strong>
+                        </td>
+
+                        <td>
+                          <span className="tracking-id">
+                            {packageItem.trackingId}
+                          </span>
+                        </td>
+
+                        <td>
+                          <span className="package-type">
+                            {packageItem.type ||
+                              "Data unavailable"}
+                          </span>
+                        </td>
+
+                        <td>
+                          {packageItem.quantity ??
+                            "Data unavailable"}
+                        </td>
+
+                        <td>
+                          <span className="weight">
+                            {formatWeight(
+                              packageItem.weight
+                            )}
+                          </span>
+                        </td>
+
+                        <td>
+                          {packageItem.dimensions ||
+                            "Data unavailable"}
+                        </td>
+
+                        <td>
+                          <span className="category">
+                            {packageItem.category ||
+                              "Data unavailable"}
+                          </span>
+                        </td>
+
+                        <td>
+                          {formatValue(
+                            packageItem.declaredValue
+                          )}
+                        </td>
+
+                        <td>
+                          <span
+                            className={`package-status ${statusClass}`}
+                          >
+                            ●{" "}
+                            {formatStatus(
+                              packageItem.status
+                            )}
+                          </span>
+                        </td>
+
+                      </tr>
+                    );
+                  })}
 
               </tbody>
 
@@ -356,38 +777,59 @@ function PackageInformation() {
 
           </div>
 
-
+          {/* TABLE FOOTER */}
           <div className="package-table-footer">
 
             <span>
-              Showing 5 of 256 packages
+              Showing{" "}
+              <strong>
+                {filteredPackages.length}
+              </strong>{" "}
+              packages
             </span>
 
             <div className="package-pagination">
+              <button type="button">
+                ‹
+              </button>
 
-              <button>‹</button>
-              <button className="selected">1</button>
-              <button>2</button>
-              <button>3</button>
-              <button>…</button>
-              <button>26</button>
-              <button>›</button>
+              <button
+                type="button"
+                className="selected"
+              >
+                1
+              </button>
 
+              <button type="button">
+                2
+              </button>
+
+              <button type="button">
+                3
+              </button>
+
+              <button type="button">
+                …
+              </button>
+
+              <button type="button">
+                ›
+              </button>
             </div>
 
           </div>
 
         </section>
 
-
         <footer className="package-bottom-footer">
-          © 2026 ShipTrack Pro · Integrated Logistics Intelligence Platform
+          © 2026 ShipTrack Pro · Integrated Logistics
+          Intelligence Platform
         </footer>
 
       </main>
-
     </div>
   );
 }
 
 export default PackageInformation;
+

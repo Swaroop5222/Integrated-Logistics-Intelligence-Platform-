@@ -394,7 +394,7 @@ function Login() {
                   required
                 >
 
-                  <option value="">
+                  <option value="" disabled>
                     Select your role
                   </option>
 
@@ -414,9 +414,7 @@ function Login() {
                     Support Agent
                   </option>
 
-                  <option value="admin">
-                    Administrator
-                  </option>
+                 
 
                 </select>
 

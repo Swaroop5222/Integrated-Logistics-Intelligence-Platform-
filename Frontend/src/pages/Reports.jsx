@@ -1,61 +1,227 @@
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api";
 import "./Reports.css";
 
-const reportData = [
-  {
-    name: "Shipment Performance Report",
-    description: "Overview of shipment volume, delivery status and performance.",
-    type: "Shipment",
-    period: "August 2026",
-    generated: "Today, 10:25 AM",
-    status: "Ready",
-  },
-  {
-    name: "Delivery Performance Report",
-    description: "On-time delivery, delays and average delivery time analysis.",
-    type: "Performance",
-    period: "August 2026",
-    generated: "Today, 09:40 AM",
-    status: "Ready",
-  },
-  {
-    name: "Delay Analysis Report",
-    description: "Detailed analysis of delayed shipments and delay reasons.",
-    type: "Analytics",
-    period: "August 2026",
-    generated: "Yesterday, 06:15 PM",
-    status: "Ready",
-  },
-  {
-    name: "Fleet Utilization Report",
-    description: "Vehicle utilization, availability and maintenance overview.",
-    type: "Fleet",
-    period: "August 2026",
-    generated: "Yesterday, 04:30 PM",
-    status: "Ready",
-  },
+const ACTIVE_STATUSES = [
+  "CREATED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
 ];
 
+const DELAYED_STATUSES = [
+  "FAILED_DELIVERY",
+  "DELAYED",
+];
+
+function getArray(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.content)) return data.content;
+  if (Array.isArray(data?.shipments)) return data.shipments;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
+
+function getStatus(shipment) {
+  return String(shipment?.status || "").toUpperCase();
+}
+
+function getTrackingNumber(shipment) {
+  return (
+    shipment?.trackingNumber ||
+    shipment?.trackingId ||
+    shipment?.referenceId ||
+    `SHIPMENT-${shipment?.id ?? "N/A"}`
+  );
+}
+
+function getCustomerName(shipment) {
+  if (shipment?.customer?.name) {
+    return shipment.customer.name;
+  }
+
+  if (shipment?.customer?.fullName) {
+    return shipment.customer.fullName;
+  }
+
+  return "Data unavailable";
+}
+
+function formatStatus(status) {
+  if (!status) return "Unknown";
+
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatDate(value) {
+  if (!value) return "Data unavailable";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Data unavailable";
+  }
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getInitials(name) {
+  if (!name) return "BC";
+
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
 function Reports() {
-  const [reportType, setReportType] = useState("All Reports");
-  const [period, setPeriod] = useState("August 2026");
-  const [message, setMessage] = useState("");
+  const [user, setUser] = useState(null);
+  const [shipments, setShipments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filteredReports =
-    reportType === "All Reports"
-      ? reportData
-      : reportData.filter((report) => report.type === reportType);
+  useEffect(() => {
+    let mounted = true;
 
-  const handleGenerate = () => {
-    setMessage(
-      `Report generated successfully for ${period}.`
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [userResponse, shipmentResponse] = await Promise.all([
+          apiRequest("/api/users/me"),
+          apiRequest("/api/shipments"),
+        ]);
+
+        if (!mounted) return;
+
+        setUser(userResponse || null);
+        setShipments(getArray(shipmentResponse));
+      } catch (err) {
+        console.error("Reports page error:", err);
+
+        if (mounted) {
+          setError(err?.message || "Unable to load report data.");
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const total = shipments.length;
+
+  const active = shipments.filter((shipment) =>
+    ACTIVE_STATUSES.includes(getStatus(shipment))
+  ).length;
+
+  const delivered = shipments.filter(
+    (shipment) => getStatus(shipment) === "DELIVERED"
+  ).length;
+
+  const delayed = shipments.filter((shipment) =>
+    DELAYED_STATUSES.includes(getStatus(shipment))
+  ).length;
+
+  const cancelled = shipments.filter(
+    (shipment) => getStatus(shipment) === "CANCELLED"
+  ).length;
+
+  const deliveryRate =
+    total > 0 ? ((delivered / total) * 100).toFixed(1) : "0.0";
+
+  const userName =
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    user?.email ||
+    "Business Client";
+
+  const initials = getInitials(userName);
+
+  function handleLogout() {
+    localStorage.removeItem("shiptrackToken");
+    localStorage.removeItem("shiptrackUser");
+    window.location.href = "/login";
+  }
+
+  function exportCsv() {
+    if (!shipments.length) return;
+
+    const headers = [
+      "Tracking Number",
+      "Customer",
+      "Status",
+      "Created At",
+      "Updated At",
+    ];
+
+    const rows = shipments.map((shipment) => [
+      getTrackingNumber(shipment),
+      getCustomerName(shipment),
+      formatStatus(getStatus(shipment)),
+      formatDate(shipment?.createdAt),
+      formatDate(shipment?.updatedAt),
+    ]);
+
+    const csv = [
+      headers,
+      ...rows,
+    ]
+      .map((row) =>
+        row
+          .map((value) =>
+            `"${String(value ?? "").replace(/"/g, '""')}"`
+          )
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "shiptrack-report.csv";
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) {
+    return (
+      <div className="reports-page">
+        <main className="reports-main">
+          <div style={{ padding: "40px" }}>
+            <h1>Reports & Export</h1>
+            <p>Loading shipment data...</p>
+          </div>
+        </main>
+      </div>
     );
-
-    setTimeout(() => {
-      setMessage("");
-    }, 3000);
-  };
+  }
 
   return (
     <div className="reports-page">
@@ -76,101 +242,65 @@ function Reports() {
 
           <p className="sidebar-label">BUSINESS</p>
 
-          <Link
-            to="/dashboard/business"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">⌂</span>
-            Overview
-          </Link>
+          <nav>
+            <Link to="/business/dashboard" className="business-nav-link">
+              <span className="nav-icon">⌂</span>
+              Overview
+            </Link>
 
-          <Link
-            to="/business/create-shipment"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">＋</span>
-            Create Shipment
-          </Link>
+            <Link to="/business/create-shipment" className="business-nav-link">
+              <span className="nav-icon">＋</span>
+              Create Shipment
+            </Link>
 
-          <Link
-            to="/business/shipment-management"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">▣</span>
-            Shipment Management
-          </Link>
+            <Link to="/business/shipments" className="business-nav-link">
+              <span className="nav-icon">▣</span>
+              Shipment Management
+            </Link>
 
-          <Link
-            to="/business/shipment-history"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">◷</span>
-            Shipment History
-          </Link>
+            <Link to="/business/history" className="business-nav-link">
+              <span className="nav-icon">◷</span>
+              Shipment History
+            </Link>
 
-          <Link
-            to="/business/package-information"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">□</span>
-            Package Information
-          </Link>
+            <Link to="/business/packages" className="business-nav-link">
+              <span className="nav-icon">▤</span>
+              Package Information
+            </Link>
 
-          <Link
-            to="/business/tracking"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">⌖</span>
-            Tracking
-          </Link>
+            <Link to="/business/tracking" className="business-nav-link">
+              <span className="nav-icon">⌖</span>
+              Tracking
+            </Link>
 
-          <Link
-            to="/business/delivery-performance"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">↗</span>
-            Delivery Performance
-          </Link>
+            <Link to="/business/performance" className="business-nav-link">
+              <span className="nav-icon">◒</span>
+              Delivery Performance
+            </Link>
 
-          <Link
-            to="/business/delay-analysis"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">△</span>
-            Delay Analysis
-          </Link>
+            <Link to="/business/delay-analysis" className="business-nav-link">
+              <span className="nav-icon">!</span>
+              Delay Analysis
+            </Link>
 
-          <Link
-            to="/business/logistics-overview"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">◈</span>
-            Logistics Overview
-          </Link>
+            <Link to="/business/logistics" className="business-nav-link">
+              <span className="nav-icon">◇</span>
+              Logistics Overview
+            </Link>
 
-          <Link
-            to="/business/customer-activity"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">♙</span>
-            Customer Activity
-          </Link>
+            <Link to="/business/customer-activity" className="business-nav-link">
+              <span className="nav-icon">♙</span>
+              Customer Activity
+            </Link>
 
-          <Link
-            to="/business/reports"
-            className="business-nav-link active"
-          >
-            <span className="nav-icon">▤</span>
-            Reports & Export
-          </Link>
-
-          <Link
-            to="/business/notifications"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">♢</span>
-            Notifications
-          </Link>
+            <Link
+              to="/business/reports"
+              className="business-nav-link active"
+            >
+              <span className="nav-icon">▥</span>
+              Reports & Export
+            </Link>
+          </nav>
 
         </div>
 
@@ -180,15 +310,19 @@ function Reports() {
             <span className="status-dot"></span>
 
             <div>
-              <strong>System Operational</strong>
+              <strong>Operational</strong>
               <small>All services running</small>
             </div>
           </div>
 
-          <Link to="/login" className="business-logout">
-            <span>↪</span>
+          <button
+            type="button"
+            className="business-logout"
+            onClick={handleLogout}
+          >
+            <span className="nav-icon">↪</span>
             Logout
-          </Link>
+          </button>
 
         </div>
 
@@ -208,26 +342,29 @@ function Reports() {
             <h1>Reports & Export</h1>
 
             <p>
-              Generate, review and export logistics performance reports.
+              Generate reports using your current shipment data.
             </p>
           </div>
 
           <div className="topbar-right">
 
-            <button className="topbar-notification">
-              ♢
-              <span>3</span>
+            <button
+              type="button"
+              className="topbar-notification"
+              aria-label="Notifications"
+            >
+              ♧
             </button>
 
             <div className="business-user">
 
               <div className="user-avatar">
-                BC
+                {initials}
               </div>
 
               <div>
-                <strong>Business Client</strong>
-                <small>Operations Manager</small>
+                <strong>{userName}</strong>
+                <small>Business Client</small>
               </div>
 
             </div>
@@ -236,75 +373,78 @@ function Reports() {
 
         </header>
 
-        {/* SUCCESS MESSAGE */}
-        {message && (
-          <div className="report-success">
-            <span>✓</span>
-            {message}
+        {/* ERROR */}
+        {error && (
+          <div
+            className="report-success"
+            style={{
+              color: "#ff6b6b",
+              background: "rgba(255, 107, 107, 0.06)",
+              borderColor: "rgba(255, 107, 107, 0.14)",
+            }}
+          >
+            <span>!</span>
+            {error}
           </div>
         )}
 
-        {/* SUMMARY */}
+        {/* SUCCESS / STATUS */}
+        {!error && (
+          <div className="report-success">
+            <span>✓</span>
+            Report data loaded from the backend successfully.
+          </div>
+        )}
+
+        {/* STATS */}
         <section className="report-stats">
 
           <div className="report-stat-card orange">
-
             <div className="report-stat-top">
-              <span>Total Reports</span>
-              <div className="report-stat-icon">▤</div>
+              <span>Total Shipments</span>
+              <div className="report-stat-icon">▣</div>
             </div>
 
-            <h2>24</h2>
-
+            <h2>{total}</h2>
             <span className="report-stat-note">
-              Generated this year
+              Current business shipments
             </span>
-
           </div>
 
           <div className="report-stat-card purple">
-
             <div className="report-stat-top">
-              <span>This Month</span>
-              <div className="report-stat-icon">◷</div>
+              <span>Active Shipments</span>
+              <div className="report-stat-icon">◌</div>
             </div>
 
-            <h2>08</h2>
-
+            <h2>{active}</h2>
             <span className="report-stat-note">
-              Reports generated
+              Currently active
             </span>
-
-          </div>
-
-          <div className="report-stat-card cyan">
-
-            <div className="report-stat-top">
-              <span>Exports</span>
-              <div className="report-stat-icon">↓</div>
-            </div>
-
-            <h2>42</h2>
-
-            <span className="report-stat-note">
-              Files downloaded
-            </span>
-
           </div>
 
           <div className="report-stat-card green">
-
             <div className="report-stat-top">
-              <span>Data Coverage</span>
+              <span>Delivered</span>
               <div className="report-stat-icon">✓</div>
             </div>
 
-            <h2>100%</h2>
-
+            <h2>{delivered}</h2>
             <span className="report-stat-note">
-              Current data available
+              Successfully delivered
             </span>
+          </div>
 
+          <div className="report-stat-card cyan">
+            <div className="report-stat-top">
+              <span>Delayed</span>
+              <div className="report-stat-icon">!</div>
+            </div>
+
+            <h2>{delayed}</h2>
+            <span className="report-stat-note">
+              Failed delivery records
+            </span>
           </div>
 
         </section>
@@ -315,14 +455,14 @@ function Reports() {
           <div className="report-card-header">
 
             <div>
-              <h3>Generate New Report</h3>
+              <h3>Generate Report</h3>
               <p>
-                Select the report type and reporting period.
+                Generate a report from the current shipment records.
               </p>
             </div>
 
             <span className="report-live">
-              DATA READY
+              LIVE DATA
             </span>
 
           </div>
@@ -330,56 +470,41 @@ function Reports() {
           <div className="generate-form">
 
             <div className="report-field">
-
               <label>REPORT TYPE</label>
 
-              <select
-                value={reportType}
-                onChange={(e) => setReportType(e.target.value)}
-              >
-                <option>All Reports</option>
-                <option>Shipment</option>
-                <option>Performance</option>
-                <option>Analytics</option>
-                <option>Fleet</option>
+              <select defaultValue="shipment">
+                <option value="shipment">
+                  Shipment Report
+                </option>
               </select>
-
             </div>
 
             <div className="report-field">
+              <label>STATUS</label>
 
-              <label>REPORTING PERIOD</label>
-
-              <select
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-              >
-                <option>August 2026</option>
-                <option>July 2026</option>
-                <option>June 2026</option>
-                <option>May 2026</option>
+              <select defaultValue="all">
+                <option value="all">All Shipments</option>
+                <option value="active">Active Shipments</option>
+                <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
               </select>
-
             </div>
 
             <div className="report-field">
+              <label>FORMAT</label>
 
-              <label>EXPORT FORMAT</label>
-
-              <select defaultValue="PDF">
-                <option>PDF</option>
-                <option>Excel</option>
-                <option>CSV</option>
+              <select defaultValue="csv">
+                <option value="csv">CSV</option>
               </select>
-
             </div>
 
             <button
+              type="button"
               className="generate-button"
-              onClick={handleGenerate}
+              onClick={exportCsv}
             >
-              <span>＋</span>
-              Generate Report
+              <span>↓</span>
+              Generate
             </button>
 
           </div>
@@ -392,88 +517,111 @@ function Reports() {
           <div className="report-card-header">
 
             <div>
-              <h3>Available Reports</h3>
+              <h3>Shipment Report</h3>
               <p>
-                Previously generated business intelligence reports.
+                Current shipment records available from the backend.
               </p>
             </div>
 
             <span className="reports-count">
-              {filteredReports.length} Reports
+              {shipments.length} records
             </span>
 
           </div>
 
           <div className="reports-list">
 
-            {filteredReports.map((report, index) => (
-
-              <div className="report-item" key={index}>
-
-                <div className="report-file-icon">
-                  ▤
-                </div>
-
+            {shipments.length === 0 ? (
+              <div className="report-item">
                 <div className="report-details">
+                  <strong>No shipment records available</strong>
+                  <p>
+                    No shipment data was returned by the backend.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              shipments.map((shipment) => {
 
-                  <strong>{report.name}</strong>
+                const status = getStatus(shipment);
 
-                  <p>{report.description}</p>
+                return (
+                  <div
+                    className="report-item"
+                    key={shipment?.id ?? getTrackingNumber(shipment)}
+                  >
 
-                  <div className="report-meta">
+                    <div className="report-file-icon">
+                      ▤
+                    </div>
 
-                    <span>{report.type}</span>
+                    <div className="report-details">
 
-                    <span>{report.period}</span>
+                      <strong>
+                        {getTrackingNumber(shipment)}
+                      </strong>
 
-                    <span>
-                      Generated {report.generated}
-                    </span>
+                      <p>
+                        {getCustomerName(shipment)}
+                      </p>
+
+                      <div className="report-meta">
+
+                        <span>
+                          Status: {formatStatus(status)}
+                        </span>
+
+                        <span>
+                          Created: {formatDate(shipment?.createdAt)}
+                        </span>
+
+                        <span>
+                          Updated: {formatDate(shipment?.updatedAt)}
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                    <div className="report-actions">
+
+                      <span className="ready-badge">
+                        READY
+                      </span>
+
+                      <button
+                        type="button"
+                        className="preview-button"
+                        onClick={() =>
+                          window.alert(
+                            `${getTrackingNumber(shipment)}\nStatus: ${formatStatus(status)}`
+                          )
+                        }
+                      >
+                        Preview
+                      </button>
+
+                      <button
+                        type="button"
+                        className="export-button"
+                        onClick={exportCsv}
+                      >
+                        Export
+                      </button>
+
+                    </div>
 
                   </div>
-
-                </div>
-
-                <div className="report-actions">
-
-                  <span className="ready-badge">
-                    {report.status}
-                  </span>
-
-                  <button
-                    className="preview-button"
-                    onClick={() =>
-                      setMessage(
-                        `${report.name} is ready for preview.`
-                      )
-                    }
-                  >
-                    Preview
-                  </button>
-
-                  <button
-                    className="export-button"
-                    onClick={() =>
-                      setMessage(
-                        `${report.name} exported successfully.`
-                      )
-                    }
-                  >
-                    ↓ Export
-                  </button>
-
-                </div>
-
-              </div>
-
-            ))}
+                );
+              })
+            )}
 
           </div>
 
         </section>
 
         {/* EXPORT OPTIONS */}
-        <section className="export-grid">
+        <div className="export-grid">
 
           <div className="report-card export-option">
 
@@ -482,18 +630,14 @@ function Reports() {
             </div>
 
             <div>
-              <strong>PDF Reports</strong>
+              <strong>PDF Report</strong>
               <p>
-                Download presentation-ready reports for sharing.
+                PDF generation is not available in the current backend.
               </p>
             </div>
 
-            <button
-              onClick={() =>
-                setMessage("PDF export selected.")
-              }
-            >
-              Export
+            <button type="button" disabled>
+              N/A
             </button>
 
           </div>
@@ -505,17 +649,13 @@ function Reports() {
             </div>
 
             <div>
-              <strong>Excel Reports</strong>
+              <strong>Excel</strong>
               <p>
-                Export detailed operational data for analysis.
+                Export current shipment data.
               </p>
             </div>
 
-            <button
-              onClick={() =>
-                setMessage("Excel export selected.")
-              }
-            >
+            <button type="button" onClick={exportCsv}>
               Export
             </button>
 
@@ -528,23 +668,19 @@ function Reports() {
             </div>
 
             <div>
-              <strong>CSV Data</strong>
+              <strong>CSV</strong>
               <p>
-                Export raw shipment data for external systems.
+                Download the current shipment records.
               </p>
             </div>
 
-            <button
-              onClick={() =>
-                setMessage("CSV export selected.")
-              }
-            >
+            <button type="button" onClick={exportCsv}>
               Export
             </button>
 
           </div>
 
-        </section>
+        </div>
 
         {/* INSIGHTS */}
         <section className="report-card report-insights">
@@ -552,9 +688,9 @@ function Reports() {
           <div className="report-card-header">
 
             <div>
-              <h3>Reporting Insights</h3>
+              <h3>Report Insights</h3>
               <p>
-                Useful information about your business reporting.
+                Calculated from the current shipment data.
               </p>
             </div>
 
@@ -569,10 +705,10 @@ function Reports() {
               </div>
 
               <div>
-                <strong>Data is up to date</strong>
+                <strong>Delivery Rate</strong>
                 <p>
-                  Shipment and delivery data is synchronized with
-                  the latest operational information.
+                  {deliveryRate}% of current shipments are marked
+                  as delivered.
                 </p>
               </div>
 
@@ -581,14 +717,14 @@ function Reports() {
             <div className="report-insight">
 
               <div className="insight-icon purple">
-                ↗
+                ▣
               </div>
 
               <div>
-                <strong>Performance reporting available</strong>
+                <strong>Active Shipments</strong>
                 <p>
-                  Delivery performance and delay analysis can be
-                  reviewed for monthly operations.
+                  {active} shipment{active === 1 ? "" : "s"} currently
+                  have an active lifecycle status.
                 </p>
               </div>
 
@@ -597,14 +733,14 @@ function Reports() {
             <div className="report-insight">
 
               <div className="insight-icon orange">
-                ↓
+                !
               </div>
 
               <div>
-                <strong>Export ready</strong>
+                <strong>Cancelled Shipments</strong>
                 <p>
-                  Business data can be exported in multiple formats
-                  for further analysis.
+                  {cancelled} shipment{cancelled === 1 ? "" : "s"} are
+                  currently marked as cancelled.
                 </p>
               </div>
 
@@ -614,12 +750,14 @@ function Reports() {
 
         </section>
 
+        {/* FOOTER */}
         <footer className="reports-footer">
-          <span>© 2026 ShipTrack Intelligence Platform</span>
-          <span>Reporting System: Operational</span>
+          <span>© 2026 ShipTrack</span>
+          <span>Reports & Export</span>
         </footer>
 
       </main>
+
     </div>
   );
 }

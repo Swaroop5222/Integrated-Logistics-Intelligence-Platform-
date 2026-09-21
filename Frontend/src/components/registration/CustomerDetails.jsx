@@ -141,7 +141,7 @@ function CommonDetails({ handleChange, registerFormData }) {
           value={registerFormData.role}
           onChange={(e) => handleChange(e)}
         >
-          <option value="">Select Role</option>
+          
           <option value="role1">Customer</option>
           <option value="role2">Business client</option>
           <option value="role3">Logistics operator</option>

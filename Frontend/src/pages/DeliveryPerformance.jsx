@@ -1,61 +1,440 @@
+
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api";
 import "./DeliveryPerformance.css";
 
 function DeliveryPerformance() {
-  const routeData = [
-    {
-      route: "Hyderabad → Bengaluru",
-      shipments: 42,
-      delivered: 39,
-      onTime: "92.8%",
-      avgTime: "18.4 hrs",
-    },
-    {
-      route: "Mumbai → Pune",
-      shipments: 36,
-      delivered: 34,
-      onTime: "94.4%",
-      avgTime: "8.2 hrs",
-    },
-    {
-      route: "Chennai → Hyderabad",
-      shipments: 28,
-      delivered: 25,
-      onTime: "89.3%",
-      avgTime: "21.6 hrs",
-    },
-    {
-      route: "Delhi → Jaipur",
-      shipments: 22,
-      delivered: 21,
-      onTime: "95.5%",
-      avgTime: "7.8 hrs",
-    },
-    {
-      route: "Bengaluru → Chennai",
-      shipments: 31,
-      delivered: 29,
-      onTime: "93.5%",
-      avgTime: "9.6 hrs",
-    },
+  const [shipments, setShipments] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadPerformanceData();
+  }, []);
+
+  const loadPerformanceData = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [currentUser, shipmentResponse] =
+        await Promise.all([
+          apiRequest("/api/users/me"),
+          apiRequest("/api/shipments"),
+        ]);
+
+      setUser(currentUser);
+
+      const shipmentList = Array.isArray(shipmentResponse)
+        ? shipmentResponse
+        : shipmentResponse?.content ||
+          shipmentResponse?.shipments ||
+          shipmentResponse?.data ||
+          [];
+
+      setShipments(shipmentList);
+
+      /*
+       * Routes are loaded individually because the backend
+       * exposes routes through /api/routes/shipment/{id}.
+       */
+      const routeResults = await Promise.all(
+        shipmentList.map(async (shipment) => {
+          if (!shipment?.id) return null;
+
+          try {
+            return await apiRequest(
+              `/api/routes/shipment/${shipment.id}`
+            );
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const validRoutes = routeResults
+        .flatMap((route) =>
+          Array.isArray(route) ? route : [route]
+        )
+        .filter(Boolean);
+
+      /*
+       * Remove duplicate route records.
+       */
+      const uniqueRoutes = Array.from(
+        new Map(
+          validRoutes.map((route) => [
+            route.id ||
+              `${route.shipmentId}-${route.origin}-${route.destination}`,
+            route,
+          ])
+        ).values()
+      );
+
+      setRoutes(uniqueRoutes);
+    } catch (err) {
+      console.error(
+        "Failed to load delivery performance:",
+        err
+      );
+
+      setError(
+        err.message ||
+          "Unable to load delivery performance."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatus = (shipment) =>
+    String(shipment?.status || "").toUpperCase();
+
+  const getDisplayStatus = (status) => {
+    if (!status) return "Data unavailable";
+
+    return status
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const getRouteKey = (origin, destination) =>
+    `${String(origin || "").trim()} → ${String(
+      destination || ""
+    ).trim()}`;
+
+  const getRouteForShipment = (shipment) => {
+    return routes.find(
+      (route) =>
+        Number(route?.shipmentId) === Number(shipment?.id)
+    );
+  };
+
+  /*
+   * SUMMARY
+   */
+
+  const totalShipments = shipments.length;
+
+  const deliveredShipments = shipments.filter(
+    (shipment) => getStatus(shipment) === "DELIVERED"
+  ).length;
+
+  const inTransitShipments = shipments.filter((shipment) =>
+    [
+      "PICKED_UP",
+      "IN_TRANSIT",
+      "OUT_FOR_DELIVERY",
+    ].includes(getStatus(shipment))
+  ).length;
+
+  const delayedShipments = shipments.filter((shipment) =>
+    ["FAILED_DELIVERY", "DELAYED"].includes(
+      getStatus(shipment)
+    )
+  ).length;
+
+  /*
+   * There is no persisted on-time flag / expected-vs-actual
+   * delivery timestamp in the current shipment response.
+   * Therefore an actual on-time rate cannot be calculated
+   * without inventing data.
+   */
+  const onTimeRate = "Data unavailable";
+
+  const averageDeliveryTime = "Data unavailable";
+
+  /*
+   * DELIVERY BREAKDOWN
+   */
+
+  const deliveredPercentage =
+    totalShipments > 0
+      ? Math.round(
+          (deliveredShipments / totalShipments) * 100
+        )
+      : 0;
+
+  const inTransitPercentage =
+    totalShipments > 0
+      ? Math.round(
+          (inTransitShipments / totalShipments) * 100
+        )
+      : 0;
+
+  const delayedPercentage =
+    totalShipments > 0
+      ? Math.round(
+          (delayedShipments / totalShipments) * 100
+        )
+      : 0;
+
+  /*
+   * ROUTE ANALYTICS
+   *
+   * Routes are grouped using the actual origin/destination
+   * returned by the backend.
+   */
+  const routeAnalytics = useMemo(() => {
+    const routeMap = new Map();
+
+    shipments.forEach((shipment) => {
+      const route = getRouteForShipment(shipment);
+
+      if (!route) return;
+
+      const origin =
+        route.origin ||
+        shipment.senderCity ||
+        shipment.senderAddress;
+
+      const destination =
+        route.destination ||
+        shipment.receiverCity ||
+        shipment.receiverAddress;
+
+      if (!origin && !destination) return;
+
+      const key = getRouteKey(
+        origin,
+        destination
+      );
+
+      if (!routeMap.has(key)) {
+        routeMap.set(key, {
+          name: key,
+          shipments: 0,
+          delivered: 0,
+          inTransit: 0,
+          delayed: 0,
+          distanceKm: null,
+          durationMinutes: null,
+        });
+      }
+
+      const record = routeMap.get(key);
+
+      record.shipments += 1;
+
+      const status = getStatus(shipment);
+
+      if (status === "DELIVERED") {
+        record.delivered += 1;
+      }
+
+      if (
+        [
+          "PICKED_UP",
+          "IN_TRANSIT",
+          "OUT_FOR_DELIVERY",
+        ].includes(status)
+      ) {
+        record.inTransit += 1;
+      }
+
+      if (
+        ["FAILED_DELIVERY", "DELAYED"].includes(status)
+      ) {
+        record.delayed += 1;
+      }
+
+      if (
+        record.distanceKm === null &&
+        route.distanceKm !== undefined &&
+        route.distanceKm !== null
+      ) {
+        record.distanceKm = route.distanceKm;
+      }
+
+      if (
+        record.durationMinutes === null &&
+        route.estimatedDurationMinutes !== undefined &&
+        route.estimatedDurationMinutes !== null
+      ) {
+        record.durationMinutes =
+          route.estimatedDurationMinutes;
+      }
+    });
+
+    /*
+     * Include route records even if their shipment is not
+     * currently returned in the grouping above.
+     */
+    routes.forEach((route) => {
+      const origin = route.origin;
+      const destination = route.destination;
+
+      if (!origin && !destination) return;
+
+      const key = getRouteKey(
+        origin,
+        destination
+      );
+
+      if (!routeMap.has(key)) {
+        routeMap.set(key, {
+          name: key,
+          shipments: 0,
+          delivered: 0,
+          inTransit: 0,
+          delayed: 0,
+          distanceKm:
+            route.distanceKm ?? null,
+          durationMinutes:
+            route.estimatedDurationMinutes ?? null,
+        });
+      }
+    });
+
+    return Array.from(routeMap.values());
+  }, [shipments, routes]);
+
+  /*
+   * Route "performance" can only be calculated from
+   * actual shipment status counts. An actual on-time rate
+   * requires expected/actual delivery timestamps, which the
+   * current backend response does not provide.
+   */
+  const getRoutePerformance = (route) => {
+    if (!route.shipments) {
+      return null;
+    }
+
+    return Math.round(
+      (route.delivered / route.shipments) * 100
+    );
+  };
+
+  const formatDuration = (minutes) => {
+    if (
+      minutes === null ||
+      minutes === undefined ||
+      !Number.isFinite(Number(minutes))
+    ) {
+      return "Data unavailable";
+    }
+
+    const value = Number(minutes);
+
+    const hours = Math.floor(value / 60);
+    const mins = Math.round(value % 60);
+
+    if (hours === 0) {
+      return `${mins}m`;
+    }
+
+    if (mins === 0) {
+      return `${hours}h`;
+    }
+
+    return `${hours}h ${mins}m`;
+  };
+
+  /*
+   * Current backend has no monthly historical performance
+   * endpoint. Show current data only rather than fake history.
+   */
+  const monthlyPerformance = [
+    { month: "Apr", value: null },
+    { month: "May", value: null },
+    { month: "Jun", value: null },
+    { month: "Jul", value: null },
+    { month: "Aug", value: null },
+    { month: "Sep", value: null },
   ];
 
-  const monthlyData = [
-    { month: "Apr", value: 88 },
-    { month: "May", value: 91 },
-    { month: "Jun", value: 89 },
-    { month: "Jul", value: 94 },
-    { month: "Aug", value: 92 },
-    { month: "Sep", value: 96 },
-  ];
+  /*
+   * Route insights
+   *
+   * These are based on the current shipment-delivery
+   * percentage, not a fabricated on-time percentage.
+   */
+  const routeWithBestCurrentDelivery = useMemo(() => {
+    if (!routeAnalytics.length) return null;
+
+    return [...routeAnalytics]
+      .filter((route) => route.shipments > 0)
+      .sort(
+        (a, b) =>
+          getRoutePerformance(b) -
+          getRoutePerformance(a)
+      )[0];
+  }, [routeAnalytics]);
+
+  const routeNeedingAttention = useMemo(() => {
+    if (!routeAnalytics.length) return null;
+
+    return [...routeAnalytics]
+      .filter((route) => route.shipments > 0)
+      .sort(
+        (a, b) =>
+          getRoutePerformance(a) -
+          getRoutePerformance(b)
+      )[0];
+  }, [routeAnalytics]);
+
+  const displayName =
+    user?.name ||
+    user?.fullName ||
+    user?.username ||
+    user?.email?.split("@")[0] ||
+    "Business Client";
+
+  const avatarLetter =
+    displayName?.charAt(0)?.toUpperCase() || "B";
+
+  const handleExport = () => {
+    const rows = [
+      [
+        "Route",
+        "Shipments",
+        "Delivered",
+        "Current Delivery Rate",
+        "Estimated Duration",
+      ],
+      ...routeAnalytics.map((route) => [
+        route.name,
+        route.shipments,
+        route.delivered,
+        `${getRoutePerformance(route) ?? "Data unavailable"}%`,
+        formatDuration(route.durationMinutes),
+      ]),
+    ];
+
+    const csv = rows
+      .map((row) =>
+        row
+          .map((value) =>
+            `"${String(value).replace(/"/g, '""')}"`
+          )
+          .join(",")
+      )
+      .join("\n");
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "delivery-performance.csv";
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="delivery-performance-page">
 
-      {/* ==========================================
-          SIDEBAR
-      ========================================== */}
-
+      {/* SIDEBAR */}
       <aside className="business-sidebar">
 
         <div className="business-brand">
@@ -78,7 +457,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">⌂</span>
-            <span>Overview</span>
+            Overview
           </Link>
 
           <Link
@@ -86,7 +465,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">＋</span>
-            <span>Create Shipment</span>
+            Create Shipment
           </Link>
 
           <Link
@@ -94,7 +473,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">▣</span>
-            <span>Shipment Management</span>
+            Shipment Management
           </Link>
 
           <Link
@@ -102,7 +481,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">◷</span>
-            <span>Shipment History</span>
+            Shipment History
           </Link>
 
           <Link
@@ -110,7 +489,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">□</span>
-            <span>Package Information</span>
+            Package Information
           </Link>
 
           <Link
@@ -118,7 +497,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">⌁</span>
-            <span>Tracking</span>
+            Tracking
           </Link>
 
           <Link
@@ -126,7 +505,7 @@ function DeliveryPerformance() {
             className="business-nav-link active"
           >
             <span className="nav-icon">↗</span>
-            <span>Delivery Performance</span>
+            Delivery Performance
           </Link>
 
           <Link
@@ -134,7 +513,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">!</span>
-            <span>Delay Analysis</span>
+            Delay Analysis
           </Link>
 
           <Link
@@ -142,7 +521,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">◎</span>
-            <span>Logistics Overview</span>
+            Logistics Overview
           </Link>
 
           <Link
@@ -150,7 +529,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">♙</span>
-            <span>Customer Activity</span>
+            Customer Activity
           </Link>
 
           <Link
@@ -158,7 +537,7 @@ function DeliveryPerformance() {
             className="business-nav-link"
           >
             <span className="nav-icon">▥</span>
-            <span>Reports & Export</span>
+            Reports & Export
           </Link>
 
         </nav>
@@ -166,22 +545,21 @@ function DeliveryPerformance() {
         <Link
           to="/login"
           className="business-logout"
+          onClick={() => {
+            localStorage.removeItem("shiptrackToken");
+            localStorage.removeItem("shiptrackUser");
+          }}
         >
-          <span>⇥</span>
-          <span>Logout</span>
+          <span className="nav-icon">⇥</span>
+          Logout
         </Link>
 
       </aside>
 
-
-      {/* ==========================================
-          MAIN CONTENT
-      ========================================== */}
-
+      {/* MAIN */}
       <main className="delivery-performance-main">
 
         {/* TOP BAR */}
-
         <header className="business-topbar">
 
           <div>
@@ -192,100 +570,118 @@ function DeliveryPerformance() {
             <h1>Delivery Performance</h1>
 
             <p>
-              Monitor delivery efficiency, on-time performance
-              and route-level results.
+              Monitor delivery efficiency, on-time
+              performance and route-level results.
             </p>
           </div>
 
           <div className="business-user">
 
-            <div className="user-avatar">
-              B
+            <div>
+              <strong>{displayName}</strong>
+              <span>Business Client · Account</span>
             </div>
 
-            <div>
-              <strong>Business Client</strong>
-              <span>Account</span>
+            <div className="user-avatar">
+              {avatarLetter}
             </div>
 
           </div>
 
         </header>
 
-
-        {/* ==========================================
-            PERFORMANCE SUMMARY
-        ========================================== */}
-
+        {/* SUMMARY STATS */}
         <section className="performance-stats">
 
           <div className="performance-stat orange">
+
             <div className="stat-top">
               <span>ON-TIME RATE</span>
               <div className="stat-icon">↗</div>
             </div>
 
-            <strong>92.6%</strong>
+            <strong>
+              {loading ? "..." : onTimeRate}
+            </strong>
 
-            <div className="stat-change positive">
-              +3.8% <span>vs last month</span>
+            <div className="stat-change">
+              <span>
+                Historical comparison unavailable
+              </span>
             </div>
+
           </div>
 
-
           <div className="performance-stat purple">
+
             <div className="stat-top">
               <span>AVG DELIVERY TIME</span>
               <div className="stat-icon">◷</div>
             </div>
 
-            <strong>14.8 hrs</strong>
+            <strong>
+              {loading
+                ? "..."
+                : averageDeliveryTime}
+            </strong>
 
-            <div className="stat-change positive">
-              -1.6 hrs <span>vs last month</span>
+            <div className="stat-change">
+              <span>
+                Backend delivery-time history unavailable
+              </span>
             </div>
+
           </div>
 
-
           <div className="performance-stat green">
+
             <div className="stat-top">
               <span>DELIVERED</span>
               <div className="stat-icon">✓</div>
             </div>
 
-            <strong>87</strong>
+            <strong>
+              {loading
+                ? "..."
+                : deliveredShipments}
+            </strong>
 
-            <div className="stat-change positive">
-              +8.4% <span>this month</span>
+            <div className="stat-change">
+              <span>
+                Current shipment status
+              </span>
             </div>
+
           </div>
 
-
           <div className="performance-stat pink">
+
             <div className="stat-top">
               <span>DELAYED</span>
               <div className="stat-icon">!</div>
             </div>
 
-            <strong>09</strong>
+            <strong>
+              {loading
+                ? "..."
+                : delayedShipments}
+            </strong>
 
-            <div className="stat-change negative">
-              -2.1% <span>vs last month</span>
+            <div className="stat-change">
+              <span>
+                Failed delivery / delayed status
+              </span>
             </div>
+
           </div>
 
         </section>
 
-
-        {/* ==========================================
-            CHART + BREAKDOWN
-        ========================================== */}
-
+        {/* CHART + BREAKDOWN */}
         <section className="performance-grid">
 
-          {/* MONTHLY CHART */}
-
-          <div className="performance-panel chart-panel">
+          {/* MONTHLY PERFORMANCE */}
+          <div className="performance-panel">
 
             <div className="panel-header">
 
@@ -294,11 +690,13 @@ function DeliveryPerformance() {
                   DELIVERY ANALYTICS
                 </span>
 
-                <h2>Monthly On-Time Performance</h2>
+                <h2>
+                  Monthly On-Time Performance
+                </h2>
 
                 <p>
-                  Percentage of shipments delivered within
-                  the expected delivery window.
+                  Historical monthly on-time data is
+                  not currently provided by the backend.
                 </p>
               </div>
 
@@ -307,7 +705,6 @@ function DeliveryPerformance() {
               </div>
 
             </div>
-
 
             <div className="chart-area">
 
@@ -322,53 +719,61 @@ function DeliveryPerformance() {
               <div className="chart-body">
 
                 <div className="chart-grid-lines">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                  <span></span>
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
                 </div>
 
                 <div className="bars">
 
-                  {monthlyData.map((item) => (
-
-                    <div
-                      className="bar-column"
-                      key={item.month}
-                    >
-
-                      <div className="bar-value">
-                        {item.value}%
-                      </div>
-
+                  {monthlyPerformance.map(
+                    (item) => (
                       <div
-                        className="performance-bar"
-                        style={{
-                          height: `${item.value - 55}%`,
-                        }}
-                      ></div>
+                        className="bar-column"
+                        key={item.month}
+                      >
 
-                      <span className="bar-label">
-                        {item.month}
-                      </span>
+                        {item.value !== null ? (
+                          <>
+                            <div className="bar-value">
+                              {item.value}%
+                            </div>
 
-                    </div>
+                            <div
+                              className="performance-bar"
+                              style={{
+                                height: `${Math.max(
+                                  35,
+                                  item.value - 50
+                                )}%`,
+                              }}
+                            />
+                          </>
+                        ) : (
+                          <div className="bar-value">
+                            N/A
+                          </div>
+                        )}
 
-                  ))}
+                        <div className="bar-label">
+                          {item.month}
+                        </div>
+
+                      </div>
+                    )
+                  )}
 
                 </div>
 
               </div>
-
             </div>
 
           </div>
 
-
-          {/* DELIVERY BREAKDOWN */}
-
-          <div className="performance-panel breakdown-panel">
+          {/* SHIPMENT STATUS */}
+          <div className="performance-panel">
 
             <div className="panel-header">
 
@@ -382,56 +787,105 @@ function DeliveryPerformance() {
 
             </div>
 
-
             <div className="breakdown-content">
 
               <div className="donut-wrapper">
 
-                <div className="donut-chart">
+                <div
+                  className="donut-chart"
+                  style={{
+                    background:
+                      totalShipments > 0
+                        ? `conic-gradient(
+                            #42d8a1 0deg ${
+                              deliveredPercentage *
+                              3.6
+                            }deg,
+                            #9b7cff ${
+                              deliveredPercentage *
+                              3.6
+                            }deg ${
+                              (deliveredPercentage +
+                                inTransitPercentage) *
+                              3.6
+                            }deg,
+                            #ff7954 ${
+                              (deliveredPercentage +
+                                inTransitPercentage) *
+                              3.6
+                            }deg 360deg
+                          )`
+                        : "#282e3d",
+                  }}
+                >
+
                   <div className="donut-center">
-                    <strong>128</strong>
+
+                    <strong>
+                      {loading
+                        ? "..."
+                        : totalShipments}
+                    </strong>
+
                     <span>Total</span>
+
                   </div>
+
                 </div>
 
               </div>
 
-
               <div className="breakdown-list">
 
                 <div className="breakdown-item">
-                  <span className="legend delivered"></span>
+
+                  <span className="legend delivered" />
 
                   <div>
                     <strong>Delivered</strong>
-                    <small>87 shipments</small>
+                    <small>
+                      {deliveredShipments} shipments
+                    </small>
                   </div>
 
-                  <b>68%</b>
+                  <b>
+                    {deliveredPercentage}%
+                  </b>
+
                 </div>
 
-
                 <div className="breakdown-item">
-                  <span className="legend transit"></span>
+
+                  <span className="legend transit" />
 
                   <div>
                     <strong>In Transit</strong>
-                    <small>32 shipments</small>
+                    <small>
+                      {inTransitShipments} shipments
+                    </small>
                   </div>
 
-                  <b>25%</b>
+                  <b>
+                    {inTransitPercentage}%
+                  </b>
+
                 </div>
 
-
                 <div className="breakdown-item">
-                  <span className="legend delayed"></span>
+
+                  <span className="legend delayed" />
 
                   <div>
                     <strong>Delayed</strong>
-                    <small>9 shipments</small>
+                    <small>
+                      {delayedShipments} shipments
+                    </small>
                   </div>
 
-                  <b>7%</b>
+                  <b>
+                    {delayedPercentage}%
+                  </b>
+
                 </div>
 
               </div>
@@ -442,11 +896,7 @@ function DeliveryPerformance() {
 
         </section>
 
-
-        {/* ==========================================
-            ROUTE PERFORMANCE
-        ========================================== */}
-
+        {/* ROUTE ANALYTICS */}
         <section className="performance-panel route-panel">
 
           <div className="panel-header">
@@ -459,17 +909,20 @@ function DeliveryPerformance() {
               <h2>Performance by Route</h2>
 
               <p>
-                Compare delivery performance across active
-                logistics routes.
+                Compare delivery performance across
+                available logistics routes.
               </p>
             </div>
 
-            <button className="export-button">
+            <button
+              type="button"
+              className="export-button"
+              onClick={handleExport}
+            >
               ↓ Export Data
             </button>
 
           </div>
-
 
           <div className="route-table-wrapper">
 
@@ -480,73 +933,111 @@ function DeliveryPerformance() {
                   <th>ROUTE</th>
                   <th>SHIPMENTS</th>
                   <th>DELIVERED</th>
-                  <th>ON-TIME RATE</th>
-                  <th>AVG DELIVERY</th>
+                  <th>CURRENT DELIVERY RATE</th>
+                  <th>EST. DURATION</th>
                   <th>PERFORMANCE</th>
                 </tr>
               </thead>
 
               <tbody>
 
-                {routeData.map((route, index) => {
+                {loading && (
+                  <tr>
+                    <td colSpan="6">
+                      Loading route analytics...
+                    </td>
+                  </tr>
+                )}
 
-                  const percentage =
-                    parseFloat(route.onTime);
-
-                  return (
-                    <tr key={index}>
-
-                      <td>
-                        <strong>
-                          {route.route}
-                        </strong>
+                {!loading &&
+                  !error &&
+                  routeAnalytics.length === 0 && (
+                    <tr>
+                      <td colSpan="6">
+                        No route data available.
                       </td>
-
-                      <td>
-                        {route.shipments}
-                      </td>
-
-                      <td>
-                        {route.delivered}
-                      </td>
-
-                      <td>
-                        <span className="on-time-value">
-                          {route.onTime}
-                        </span>
-                      </td>
-
-                      <td>
-                        {route.avgTime}
-                      </td>
-
-                      <td>
-
-                        <div className="mini-performance">
-
-                          <div className="mini-track">
-                            <span
-                              style={{
-                                width: `${percentage}%`,
-                              }}
-                            ></span>
-                          </div>
-
-                          <small>
-                            {percentage >= 93
-                              ? "Excellent"
-                              : percentage >= 90
-                              ? "Good"
-                              : "Needs Attention"}
-                          </small>
-
-                        </div>
-
-                      </td>
-
                     </tr>
-                  );
-                })}
+                  )}
+
+                {!loading &&
+                  routeAnalytics.map((route) => {
+
+                    const performance =
+                      getRoutePerformance(route);
+
+                    let performanceLabel =
+                      "Data unavailable";
+
+                    if (performance !== null) {
+                      if (performance >= 90) {
+                        performanceLabel =
+                          "Good";
+                      } else if (
+                        performance >= 75
+                      ) {
+                        performanceLabel =
+                          "Needs Attention";
+                      } else {
+                        performanceLabel =
+                          "Needs Attention";
+                      }
+                    }
+
+                    return (
+                      <tr key={route.name}>
+
+                        <td>
+                          <strong>
+                            {route.name}
+                          </strong>
+                        </td>
+
+                        <td>
+                          {route.shipments}
+                        </td>
+
+                        <td>
+                          {route.delivered}
+                        </td>
+
+                        <td>
+                          <span className="on-time-value">
+                            {performance !== null
+                              ? `${performance}%`
+                              : "Data unavailable"}
+                          </span>
+                        </td>
+
+                        <td>
+                          {formatDuration(
+                            route.durationMinutes
+                          )}
+                        </td>
+
+                        <td>
+                          <div className="mini-performance">
+
+                            <div className="mini-track">
+                              <span
+                                style={{
+                                  width:
+                                    performance !== null
+                                      ? `${performance}%`
+                                      : "0%",
+                                }}
+                              />
+                            </div>
+
+                            <small>
+                              {performanceLabel}
+                            </small>
+
+                          </div>
+                        </td>
+
+                      </tr>
+                    );
+                  })}
 
               </tbody>
 
@@ -556,11 +1047,7 @@ function DeliveryPerformance() {
 
         </section>
 
-
-        {/* ==========================================
-            PERFORMANCE INSIGHTS
-        ========================================== */}
-
+        {/* INSIGHTS */}
         <section className="insights-grid">
 
           <div className="insight-card positive-insight">
@@ -570,19 +1057,28 @@ function DeliveryPerformance() {
             </div>
 
             <div>
-              <span>BEST PERFORMING ROUTE</span>
+
+              <span>
+                BEST CURRENT ROUTE
+              </span>
 
               <strong>
-                Delhi → Jaipur
+                {routeWithBestCurrentDelivery
+                  ? routeWithBestCurrentDelivery.name
+                  : "Data unavailable"}
               </strong>
 
               <p>
-                95.5% of shipments are delivered on time.
+                {routeWithBestCurrentDelivery
+                  ? `${getRoutePerformance(
+                      routeWithBestCurrentDelivery
+                    )}% of shipments are currently delivered.`
+                  : "Route delivery data is unavailable."}
               </p>
+
             </div>
 
           </div>
-
 
           <div className="insight-card warning-insight">
 
@@ -591,19 +1087,28 @@ function DeliveryPerformance() {
             </div>
 
             <div>
-              <span>ROUTE NEEDING ATTENTION</span>
+
+              <span>
+                ROUTE NEEDING ATTENTION
+              </span>
 
               <strong>
-                Chennai → Hyderabad
+                {routeNeedingAttention
+                  ? routeNeedingAttention.name
+                  : "Data unavailable"}
               </strong>
 
               <p>
-                On-time delivery is currently at 89.3%.
+                {routeNeedingAttention
+                  ? `Current delivered shipment rate is ${getRoutePerformance(
+                      routeNeedingAttention
+                    )}%.`
+                  : "Route delivery data is unavailable."}
               </p>
+
             </div>
 
           </div>
-
 
           <div className="insight-card neutral-insight">
 
@@ -612,25 +1117,25 @@ function DeliveryPerformance() {
             </div>
 
             <div>
-              <span>AVERAGE IMPROVEMENT</span>
+
+              <span>
+                AVERAGE IMPROVEMENT
+              </span>
 
               <strong>
-                1.6 hours faster
+                Data unavailable
               </strong>
 
               <p>
-                Average delivery time improved this month.
+                Historical delivery-time comparison
+                is not provided by the current backend.
               </p>
+
             </div>
 
           </div>
 
         </section>
-
-
-        {/* ==========================================
-            FOOTER
-        ========================================== */}
 
         <footer className="business-footer">
           © 2026 ShipTrack Pro · Integrated Logistics
@@ -638,9 +1143,9 @@ function DeliveryPerformance() {
         </footer>
 
       </main>
-
     </div>
   );
 }
 
 export default DeliveryPerformance;
+

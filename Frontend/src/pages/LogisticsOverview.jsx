@@ -1,58 +1,445 @@
-import React from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api";
 import "./LogisticsOverview.css";
 
-const activeRoutes = [
-  {
-    route: "Hyderabad → Bengaluru",
-    vehicle: "TRK-204",
-    progress: 82,
-    eta: "Today, 6:30 PM",
-    status: "On Track",
-  },
-  {
-    route: "Mumbai → Pune",
-    vehicle: "TRK-118",
-    progress: 64,
-    eta: "Today, 8:15 PM",
-    status: "On Track",
-  },
-  {
-    route: "Chennai → Hyderabad",
-    vehicle: "TRK-327",
-    progress: 48,
-    eta: "Tomorrow, 10:20 AM",
-    status: "Delayed",
-  },
-  {
-    route: "Delhi → Jaipur",
-    vehicle: "TRK-091",
-    progress: 71,
-    eta: "Today, 9:40 PM",
-    status: "On Track",
-  },
-  {
-    route: "Bengaluru → Chennai",
-    vehicle: "TRK-256",
-    progress: 36,
-    eta: "Tomorrow, 7:50 AM",
-    status: "On Track",
-  },
+const NAV_ITEMS = [
+  ["⌂", "Overview", "/dashboard/business"],
+  ["＋", "Create Shipment", "/business/create-shipment"],
+  ["▣", "Shipment Management", "/business/shipment-management"],
+  ["◷", "Shipment History", "/business/shipment-history"],
+  ["□", "Package Information", "/business/package-information"],
+  ["⌖", "Tracking", "/business/tracking"],
+  ["↗", "Delivery Performance", "/business/delivery-performance"],
+  ["△", "Delay Analysis", "/business/delay-analysis"],
+  ["◈", "Logistics Overview", "/business/logistics-overview"],
+  ["♙", "Customer Activity", "/business/customer-activity"],
+  ["▤", "Reports & Export", "/business/reports"],
+  ["♢", "Notifications", "/business/notifications"],
 ];
 
-const networkCities = [
-  { city: "Hyderabad", shipments: 38, type: "Hub" },
-  { city: "Bengaluru", shipments: 31, type: "Hub" },
-  { city: "Mumbai", shipments: 27, type: "Hub" },
-  { city: "Chennai", shipments: 24, type: "Hub" },
-  { city: "Delhi", shipments: 19, type: "Hub" },
+const IN_TRANSIT_STATUSES = [
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
 ];
 
-function LogisticsOverview() {
+const DELAYED_STATUSES = [
+  "FAILED_DELIVERY",
+  "DELAYED",
+];
+
+const TERMINAL_STATUSES = [
+  "DELIVERED",
+  "CANCELLED",
+];
+
+function getUserName(user) {
+  return (
+    user?.fullName ||
+    user?.name ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    user?.username ||
+    user?.email ||
+    "Business Client"
+  );
+}
+
+function getInitials(name) {
+  return (
+    name
+      ?.split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "BC"
+  );
+}
+
+function getStatus(shipment) {
+  return String(shipment?.status || "").toUpperCase();
+}
+
+function getShipmentOrigin(shipment) {
+  return (
+    shipment?.senderCity ||
+    shipment?.senderAddress ||
+    shipment?.origin ||
+    shipment?.pickupLocation ||
+    shipment?.senderLocation ||
+    "Origin unavailable"
+  );
+}
+
+function getShipmentDestination(shipment) {
+  return (
+    shipment?.receiverCity ||
+    shipment?.receiverAddress ||
+    shipment?.destination ||
+    shipment?.deliveryLocation ||
+    shipment?.receiverLocation ||
+    "Destination unavailable"
+  );
+}
+
+function getRouteName(route, shipment) {
+  if (route) {
+    const origin =
+      route.origin ||
+      route.originAddress ||
+      route.originLocation ||
+      getShipmentOrigin(shipment);
+
+    const destination =
+      route.destination ||
+      route.destinationAddress ||
+      route.destinationLocation ||
+      getShipmentDestination(shipment);
+
+    return `${origin} → ${destination}`;
+  }
+
+  return `${getShipmentOrigin(shipment)} → ${getShipmentDestination(
+    shipment
+  )}`;
+}
+
+function getRouteStatus(shipment) {
+  const status = getStatus(shipment);
+
+  if (DELAYED_STATUSES.includes(status)) {
+    return "Delayed";
+  }
+
+  if (IN_TRANSIT_STATUSES.includes(status)) {
+    return "On Track";
+  }
+
+  if (status === "DELIVERED") {
+    return "Delivered";
+  }
+
+  if (status === "CANCELLED") {
+    return "Cancelled";
+  }
+
+  if (status === "CREATED") {
+    return "Created";
+  }
+
+  return status || "Data unavailable";
+}
+
+function getRouteDuration(route) {
+  if (!route?.estimatedDurationMinutes) {
+    return null;
+  }
+
+  const minutes = Number(route.estimatedDurationMinutes);
+
+  if (Number.isNaN(minutes)) {
+    return null;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h`;
+  }
+
+  return `${mins}m`;
+}
+
+function getOperatorName(shipment, route) {
+  return (
+    route?.assignedOperatorName ||
+    shipment?.assignedOperatorName ||
+    shipment?.assignedOperator?.name ||
+    shipment?.assignedOperator?.fullName ||
+    "Data unavailable"
+  );
+}
+
+function getOperatorId(shipment, route) {
+  return (
+    route?.assignedOperatorId ||
+    shipment?.assignedOperatorId ||
+    shipment?.assignedOperator?.id ||
+    null
+  );
+}
+
+function getShipmentDate(shipment) {
+  return (
+    shipment?.updatedAt ||
+    shipment?.createdAt ||
+    shipment?.createdDate ||
+    null
+  );
+}
+
+function formatDate(date) {
+  if (!date) return "Data unavailable";
+
+  const parsed = new Date(date);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "Data unavailable";
+  }
+
+  return parsed.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export default function LogisticsOverview() {
+  const [user, setUser] = useState(null);
+  const [shipments, setShipments] = useState([]);
+  const [routes, setRoutes] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [currentUser, shipmentResponse] = await Promise.all([
+          apiRequest("/api/users/me"),
+          apiRequest("/api/shipments"),
+        ]);
+
+        const shipmentList = Array.isArray(shipmentResponse)
+          ? shipmentResponse
+          : shipmentResponse?.content ||
+            shipmentResponse?.shipments ||
+            shipmentResponse?.data ||
+            [];
+
+        const routeResults = await Promise.all(
+          shipmentList.map(async (shipment) => {
+            try {
+              const route = await apiRequest(
+                `/api/routes/shipment/${shipment.id}`
+              );
+
+              return [shipment.id, route];
+            } catch {
+              return [shipment.id, null];
+            }
+          })
+        );
+
+        if (!mounted) return;
+
+        setUser(currentUser);
+        setShipments(shipmentList);
+        setRoutes(Object.fromEntries(routeResults));
+      } catch (err) {
+        if (!mounted) return;
+
+        setError(
+          err.message || "Unable to load logistics overview."
+        );
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const userName = getUserName(user);
+
+  const totalShipments = shipments.length;
+
+  const deliveredShipments = useMemo(
+    () =>
+      shipments.filter(
+        (shipment) => getStatus(shipment) === "DELIVERED"
+      ),
+    [shipments]
+  );
+
+  const inTransitShipments = useMemo(
+    () =>
+      shipments.filter((shipment) =>
+        IN_TRANSIT_STATUSES.includes(getStatus(shipment))
+      ),
+    [shipments]
+  );
+
+  const delayedShipments = useMemo(
+    () =>
+      shipments.filter((shipment) =>
+        DELAYED_STATUSES.includes(getStatus(shipment))
+      ),
+    [shipments]
+  );
+
+  /*
+   * These values are derived only from the current shipment data.
+   * They are NOT presented as historical on-time metrics.
+   */
+  const deliveredPercentage =
+    totalShipments > 0
+      ? Math.round(
+          (deliveredShipments.length / totalShipments) * 100
+        )
+      : 0;
+
+  const inTransitPercentage =
+    totalShipments > 0
+      ? Math.round(
+          (inTransitShipments.length / totalShipments) * 100
+        )
+      : 0;
+
+  const delayedPercentage =
+    totalShipments > 0
+      ? Math.round(
+          (delayedShipments.length / totalShipments) * 100
+        )
+      : 0;
+
+  /*
+   * Routes are available only where the backend has a saved route.
+   */
+  const activeRoutes = useMemo(() => {
+    return shipments
+      .filter((shipment) => {
+        const status = getStatus(shipment);
+
+        return (
+          !TERMINAL_STATUSES.includes(status) &&
+          routes[shipment.id]
+        );
+      })
+      .map((shipment) => ({
+        shipment,
+        route: routes[shipment.id],
+      }));
+  }, [shipments, routes]);
+
+  /*
+   * Unique assigned operators.
+   * This is an operator count, not a vehicle count.
+   */
+  const activeOperatorIds = useMemo(() => {
+    const ids = new Set();
+
+    activeRoutes.forEach(({ shipment, route }) => {
+      const operatorId = getOperatorId(shipment, route);
+
+      if (operatorId != null) {
+        ids.add(String(operatorId));
+      }
+    });
+
+    return ids;
+  }, [activeRoutes]);
+
+  /*
+   * Hub counts are derived from the actual shipment origin fields.
+   * No hardcoded city names are inserted.
+   */
+  const hubData = useMemo(() => {
+    const counts = {};
+
+    shipments.forEach((shipment) => {
+      const city =
+        shipment?.senderCity ||
+        shipment?.originCity ||
+        shipment?.pickupCity;
+
+      if (!city) return;
+
+      const cleanCity = String(city).trim();
+
+      if (!cleanCity) return;
+
+      counts[cleanCity] = (counts[cleanCity] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([city, count]) => ({
+        city,
+        count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [shipments]);
+
+  const maxHubCount =
+    hubData.length > 0
+      ? Math.max(...hubData.map((hub) => hub.count))
+      : 0;
+
+  /*
+   * Routes shown in the table are actual saved backend routes.
+   * We do not fabricate progress or ETA because those are not
+   * persisted in the current backend.
+   */
+  const routeRows = useMemo(() => {
+    return activeRoutes.slice(0, 10).map(({ shipment, route }) => ({
+      shipment,
+      route,
+      routeName: getRouteName(route, shipment),
+      operator: getOperatorName(shipment, route),
+      status: getRouteStatus(shipment),
+      duration: getRouteDuration(route),
+    }));
+  }, [activeRoutes]);
+
+  const statusSegments = [
+    {
+      label: "Delivered",
+      value: deliveredShipments.length,
+      percentage: deliveredPercentage,
+      className: "delivered",
+    },
+    {
+      label: "In Transit",
+      value: inTransitShipments.length,
+      percentage: inTransitPercentage,
+      className: "transit",
+    },
+    {
+      label: "Delayed",
+      value: delayedShipments.length,
+      percentage: delayedPercentage,
+      className: "delayed",
+    },
+  ];
+
+  /*
+   * Decorative network lines are kept only as the visual design
+   * supplied in the original CSS. They are not claimed to be
+   * geographic coordinates.
+   */
+  const networkNodes = hubData.slice(0, 5);
+
   return (
     <div className="logistics-page">
-
-      {/* SIDEBAR */}
       <aside className="business-sidebar">
         <div className="sidebar-brand">
           <div className="brand-icon">S</div>
@@ -64,105 +451,29 @@ function LogisticsOverview() {
         </div>
 
         <div className="sidebar-section">
-          <p className="sidebar-label">BUSINESS</p>
+          <div className="sidebar-label">BUSINESS</div>
 
-          <Link to="/dashboard/business" className="business-nav-link">
-            <span className="nav-icon">⌂</span>
-            Overview
-          </Link>
-
-          <Link
-            to="/business/create-shipment"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">＋</span>
-            Create Shipment
-          </Link>
-
-          <Link
-            to="/business/shipment-management"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">▣</span>
-            Shipment Management
-          </Link>
-
-          <Link
-            to="/business/shipment-history"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">◷</span>
-            Shipment History
-          </Link>
-
-          <Link
-            to="/business/package-information"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">□</span>
-            Package Information
-          </Link>
-
-          <Link
-            to="/business/tracking"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">⌖</span>
-            Tracking
-          </Link>
-
-          <Link
-            to="/business/delivery-performance"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">↗</span>
-            Delivery Performance
-          </Link>
-
-          <Link
-            to="/business/delay-analysis"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">△</span>
-            Delay Analysis
-          </Link>
-
-          <Link
-            to="/business/logistics-overview"
-            className="business-nav-link active"
-          >
-            <span className="nav-icon">◈</span>
-            Logistics Overview
-          </Link>
-
-          <Link
-            to="/business/customer-activity"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">♙</span>
-            Customer Activity
-          </Link>
-
-          <Link
-            to="/business/reports"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">▤</span>
-            Reports & Export
-          </Link>
-
-          <Link
-            to="/business/notifications"
-            className="business-nav-link"
-          >
-            <span className="nav-icon">♢</span>
-            Notifications
-          </Link>
+          <nav>
+            {NAV_ITEMS.map(([icon, label, path]) => (
+              <Link
+                key={path}
+                to={path}
+                className={`business-nav-link ${
+                  path === "/business/logistics-overview"
+                    ? "active"
+                    : ""
+                }`}
+              >
+                <span className="nav-icon">{icon}</span>
+                {label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         <div className="sidebar-bottom">
           <div className="business-status">
-            <span className="status-dot"></span>
+            <span className="status-dot" />
 
             <div>
               <strong>System Operational</strong>
@@ -171,17 +482,14 @@ function LogisticsOverview() {
           </div>
 
           <Link to="/login" className="business-logout">
-            <span>↪</span>
+            <span className="nav-icon">↪</span>
             Logout
           </Link>
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="logistics-main">
-
-        {/* TOP BAR */}
-        <header className="logistics-topbar">
+        <div className="logistics-topbar">
           <div>
             <span className="breadcrumb">
               Business Client / Logistics Overview
@@ -190,42 +498,64 @@ function LogisticsOverview() {
             <h1>Logistics Overview</h1>
 
             <p>
-              Monitor your logistics network, fleet and shipment operations
-              from one place.
+              Monitor your logistics network, fleet and shipment
+              operations from one place.
             </p>
           </div>
 
           <div className="topbar-right">
-            <button className="topbar-notification">
+            <button
+              className="topbar-notification"
+              type="button"
+              title="Notifications"
+            >
               ♢
-              <span>3</span>
             </button>
 
             <div className="business-user">
-              <div className="user-avatar">BC</div>
+              <div className="user-avatar">
+                {getInitials(userName)}
+              </div>
 
               <div>
-                <strong>Business Client</strong>
+                <strong>{userName}</strong>
                 <small>Operations Manager</small>
               </div>
             </div>
           </div>
-        </header>
+        </div>
 
-        {/* SUMMARY CARDS */}
+        {error && (
+          <div
+            style={{
+              marginBottom: "18px",
+              padding: "12px 15px",
+              borderRadius: "9px",
+              background: "rgba(255, 111, 99, 0.08)",
+              border:
+                "1px solid rgba(255, 111, 99, 0.12)",
+              color: "#ff6f63",
+              fontSize: "11px",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* SUMMARY */}
         <section className="logistics-stats">
-
           <div className="logistics-stat-card orange">
             <div className="stat-top">
               <span>Total Shipments</span>
               <div className="stat-icon">▣</div>
             </div>
 
-            <h2>128</h2>
+            <h2>
+              {loading ? "..." : totalShipments}
+            </h2>
 
-            <div className="stat-change positive">
-              ↑ 12.4%
-              <span>vs last month</span>
+            <div className="stat-change">
+              Data unavailable
             </div>
           </div>
 
@@ -235,11 +565,12 @@ function LogisticsOverview() {
               <div className="stat-icon">⌁</div>
             </div>
 
-            <h2>18</h2>
+            <h2>
+              {loading ? "..." : activeRoutes.length}
+            </h2>
 
-            <div className="stat-change positive">
-              ↑ 3
-              <span>new routes</span>
+            <div className="stat-change">
+              Current routes
             </div>
           </div>
 
@@ -249,14 +580,10 @@ function LogisticsOverview() {
               <div className="stat-icon">▰</div>
             </div>
 
-            <h2>78%</h2>
-
-            <div className="progress-small">
-              <div style={{ width: "78%" }}></div>
-            </div>
+            <h2>Data unavailable</h2>
 
             <div className="stat-caption">
-              33 of 42 vehicles active
+              Vehicle fleet data is not available
             </div>
           </div>
 
@@ -266,98 +593,106 @@ function LogisticsOverview() {
               <div className="stat-icon">✓</div>
             </div>
 
-            <h2>92.6%</h2>
+            <h2>Data unavailable</h2>
 
-            <div className="stat-change positive">
-              ↑ 2.1%
-              <span>this month</span>
+            <div className="stat-caption">
+              Expected vs actual delivery time unavailable
             </div>
           </div>
-
         </section>
 
-        {/* NETWORK + SHIPMENT STATUS */}
+        {/* NETWORK + STATUS */}
         <section className="overview-grid">
-
-          {/* NETWORK */}
-          <div className="overview-card network-card">
-
+          <div className="overview-card">
             <div className="card-header">
               <div>
                 <h3>Logistics Network</h3>
-                <p>Current activity across major operational hubs</p>
+
+                <p>
+                  Current activity across available operational
+                  hubs
+                </p>
               </div>
 
               <span className="live-indicator">
-                <span></span>
+                <span />
                 LIVE
               </span>
             </div>
 
             <div className="network-map">
+              <div className="route-line line-one" />
+              <div className="route-line line-two" />
+              <div className="route-line line-three" />
+              <div className="route-line line-four" />
 
-              <div className="route-line line-one"></div>
-              <div className="route-line line-two"></div>
-              <div className="route-line line-three"></div>
-              <div className="route-line line-four"></div>
+              {networkNodes.map((hub, index) => {
+                const positions = [
+                  "node-hyd",
+                  "node-blr",
+                  "node-mum",
+                  "node-che",
+                  "node-del",
+                ];
 
-              <div className="network-node node-hyd">
-                <span></span>
-                <strong>Hyderabad</strong>
-                <small>38 shipments</small>
-              </div>
+                return (
+                  <div
+                    key={hub.city}
+                    className={`network-node ${
+                      positions[index] || ""
+                    }`}
+                  >
+                    <span />
 
-              <div className="network-node node-blr">
-                <span></span>
-                <strong>Bengaluru</strong>
-                <small>31 shipments</small>
-              </div>
+                    <strong>{hub.city}</strong>
 
-              <div className="network-node node-mum">
-                <span></span>
-                <strong>Mumbai</strong>
-                <small>27 shipments</small>
-              </div>
+                    <small>
+                      {hub.count} shipments
+                    </small>
+                  </div>
+                );
+              })}
 
-              <div className="network-node node-che">
-                <span></span>
-                <strong>Chennai</strong>
-                <small>24 shipments</small>
-              </div>
-
-              <div className="network-node node-del">
-                <span></span>
-                <strong>Delhi</strong>
-                <small>19 shipments</small>
-              </div>
-
+              {networkNodes.length === 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#626a7d",
+                    fontSize: "10px",
+                  }}
+                >
+                  Hub location data unavailable
+                </div>
+              )}
             </div>
 
             <div className="network-footer">
               <div>
-                <span className="network-dot active"></span>
+                <span className="network-dot active" />
                 Active Hub
               </div>
 
               <div>
-                <span className="network-dot route"></span>
+                <span className="network-dot route" />
                 Active Route
               </div>
 
               <div>
-                <span className="network-dot delayed"></span>
+                <span className="network-dot delayed" />
                 Attention Required
               </div>
             </div>
-
           </div>
 
-          {/* SHIPMENT STATUS */}
-          <div className="overview-card status-card">
-
+          <div className="overview-card">
             <div className="card-header">
               <div>
                 <h3>Shipment Status</h3>
+
                 <p>Current shipment distribution</p>
               </div>
 
@@ -367,70 +702,75 @@ function LogisticsOverview() {
             </div>
 
             <div className="status-chart">
-
-              <div className="donut">
+              <div
+                className="donut"
+                style={{
+                  background:
+                    totalShipments > 0
+                      ? `conic-gradient(
+                          #42d8a1 0deg ${
+                            deliveredPercentage * 3.6
+                          }deg,
+                          #8a5cff ${
+                            deliveredPercentage * 3.6
+                          }deg ${
+                            (deliveredPercentage +
+                              inTransitPercentage) *
+                            3.6
+                          }deg,
+                          #ff7954 ${
+                            (deliveredPercentage +
+                              inTransitPercentage) *
+                            3.6
+                          }deg 360deg
+                        )`
+                      : "#252b38",
+                }}
+              >
                 <div className="donut-center">
-                  <strong>128</strong>
+                  <strong>{totalShipments}</strong>
                   <span>Total</span>
                 </div>
               </div>
 
               <div className="status-legend">
+                {statusSegments.map((segment) => (
+                  <div
+                    className="legend-item"
+                    key={segment.label}
+                  >
+                    <span
+                      className={`legend-color ${segment.className}`}
+                    />
 
-                <div className="legend-item">
-                  <span className="legend-color delivered"></span>
+                    <div>
+                      <strong>{segment.value}</strong>
+                      <span>{segment.label}</span>
+                    </div>
 
-                  <div>
-                    <strong>87</strong>
-                    <span>Delivered</span>
+                    <b>{segment.percentage}%</b>
                   </div>
-
-                  <b>68%</b>
-                </div>
-
-                <div className="legend-item">
-                  <span className="legend-color transit"></span>
-
-                  <div>
-                    <strong>32</strong>
-                    <span>In Transit</span>
-                  </div>
-
-                  <b>25%</b>
-                </div>
-
-                <div className="legend-item">
-                  <span className="legend-color delayed"></span>
-
-                  <div>
-                    <strong>09</strong>
-                    <span>Delayed</span>
-                  </div>
-
-                  <b>7%</b>
-                </div>
-
+                ))}
               </div>
-
             </div>
 
             <div className="status-summary">
-              <span>
-                <b>92.6%</b> overall on-time performance
-              </span>
+              Current shipment distribution based on backend
+              status.
             </div>
-
           </div>
-
         </section>
 
-        {/* ACTIVE ROUTES */}
+        {/* ROUTES */}
         <section className="overview-card routes-card">
-
           <div className="card-header">
             <div>
               <h3>Active Routes</h3>
-              <p>Live shipment movement across operational routes</p>
+
+              <p>
+                Live shipment movement across available
+                operational routes
+              </p>
             </div>
 
             <Link to="/business/tracking">
@@ -439,13 +779,11 @@ function LogisticsOverview() {
           </div>
 
           <div className="routes-table-wrapper">
-
             <table className="routes-table">
-
               <thead>
                 <tr>
                   <th>ROUTE</th>
-                  <th>VEHICLE</th>
+                  <th>OPERATOR</th>
                   <th>PROGRESS</th>
                   <th>ETA</th>
                   <th>STATUS</th>
@@ -453,237 +791,311 @@ function LogisticsOverview() {
               </thead>
 
               <tbody>
-                {activeRoutes.map((item, index) => (
-                  <tr key={index}>
-
-                    <td>
-                      <div className="route-name">
-                        <span className="route-icon">⌁</span>
-                        <strong>{item.route}</strong>
-                      </div>
+                {routeRows.length === 0 ? (
+                  <tr>
+                    <td colSpan="5">
+                      {loading
+                        ? "Loading route data..."
+                        : "No active route data available"}
                     </td>
-
-                    <td>
-                      <span className="vehicle-id">
-                        {item.vehicle}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div className="route-progress">
-
-                        <div className="progress-track">
-                          <div
-                            className={
-                              item.status === "Delayed"
-                                ? "progress-fill delayed-progress"
-                                : "progress-fill"
-                            }
-                            style={{
-                              width: `${item.progress}%`,
-                            }}
-                          ></div>
-                        </div>
-
-                        <span>{item.progress}%</span>
-
-                      </div>
-                    </td>
-
-                    <td>
-                      <span className="eta">
-                        {item.eta}
-                      </span>
-                    </td>
-
-                    <td>
-                      <span
-                        className={
-                          item.status === "Delayed"
-                            ? "route-status delayed-status"
-                            : "route-status ontrack-status"
-                        }
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-
                   </tr>
-                ))}
+                ) : (
+                  routeRows.map(
+                    ({
+                      shipment,
+                      route,
+                      routeName,
+                      operator,
+                      status,
+                      duration,
+                    }) => {
+                      const isDelayed =
+                        DELAYED_STATUSES.includes(
+                          getStatus(shipment)
+                        );
+
+                      return (
+                        <tr
+                          key={`${shipment.id}-${route?.id || "route"}`}
+                        >
+                          <td>
+                            <div className="route-name">
+                              <span className="route-icon">
+                                ⌁
+                              </span>
+
+                              <strong>{routeName}</strong>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span className="vehicle-id">
+                              {operator}
+                            </span>
+                          </td>
+
+                          <td>
+                            <div className="route-progress">
+                              <div className="progress-track">
+                                <div
+                                  className={`progress-fill ${
+                                    isDelayed
+                                      ? "delayed-progress"
+                                      : ""
+                                  }`}
+                                  style={{
+                                    width: "0%",
+                                  }}
+                                />
+                              </div>
+
+                              <span>
+                                Data unavailable
+                              </span>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span className="eta">
+                              {duration
+                                ? `Route: ${duration}`
+                                : "Data unavailable"}
+                            </span>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`route-status ${
+                                isDelayed
+                                  ? "delayed-status"
+                                  : "ontrack-status"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )
+                )}
               </tbody>
-
             </table>
-
           </div>
-
         </section>
 
         {/* FLEET + INSIGHTS */}
         <section className="bottom-grid">
-
-          {/* FLEET */}
-          <div className="overview-card fleet-card">
-
+          <div className="overview-card">
             <div className="card-header">
               <div>
                 <h3>Fleet Overview</h3>
-                <p>Vehicle availability and utilization</p>
+
+                <p>
+                  Vehicle availability and utilization
+                </p>
               </div>
 
               <span className="fleet-total">
-                42 Vehicles
+                Data unavailable
               </span>
             </div>
 
             <div className="fleet-content">
-
-              <div className="fleet-circle">
+              <div
+                className="fleet-circle"
+                style={{
+                  background:
+                    "conic-gradient(#35cbd1 0deg 0deg, #252b38 0deg 360deg)",
+                }}
+              >
                 <div>
-                  <strong>78%</strong>
+                  <strong>N/A</strong>
                   <span>Utilized</span>
                 </div>
               </div>
 
               <div className="fleet-stats">
-
                 <div className="fleet-stat">
-                  <span className="fleet-indicator active"></span>
+                  <span className="fleet-indicator active" />
 
                   <div>
-                    <strong>33</strong>
-                    <span>Active</span>
+                    <strong>
+                      {activeOperatorIds.size || "N/A"}
+                    </strong>
+
+                    <span>
+                      Active operators
+                    </span>
                   </div>
                 </div>
 
                 <div className="fleet-stat">
-                  <span className="fleet-indicator available"></span>
+                  <span className="fleet-indicator available" />
 
                   <div>
-                    <strong>06</strong>
-                    <span>Available</span>
+                    <strong>Data unavailable</strong>
+
+                    <span>
+                      Available vehicles
+                    </span>
                   </div>
                 </div>
 
                 <div className="fleet-stat">
-                  <span className="fleet-indicator maintenance"></span>
+                  <span className="fleet-indicator maintenance" />
 
                   <div>
-                    <strong>03</strong>
-                    <span>Maintenance</span>
+                    <strong>Data unavailable</strong>
+
+                    <span>
+                      Maintenance vehicles
+                    </span>
                   </div>
                 </div>
-
               </div>
-
             </div>
-
           </div>
 
-          {/* OPERATIONAL INSIGHTS */}
           <div className="overview-card insights-card">
-
             <div className="card-header">
               <div>
                 <h3>Operational Insights</h3>
-                <p>Important observations from your network</p>
+
+                <p>
+                  Current observations from your shipment
+                  network
+                </p>
               </div>
             </div>
 
             <div className="insight-list">
+              <div className="insight-item">
+                <div className="insight-icon green-icon">
+                  ✓
+                </div>
+
+                <div>
+                  <strong>
+                    Current Delivery Status
+                  </strong>
+
+                  <p>
+                    {totalShipments > 0
+                      ? `${deliveredShipments.length} of ${totalShipments} shipments are currently marked as delivered.`
+                      : "Shipment data unavailable."}
+                  </p>
+                </div>
+
+                <span className="insight-arrow">
+                  →
+                </span>
+              </div>
 
               <div className="insight-item">
-                <div className="insight-icon green-icon">✓</div>
+                <div className="insight-icon purple-icon">
+                  ↗
+                </div>
 
                 <div>
-                  <strong>Best Performing Route</strong>
+                  <strong>Active Operations</strong>
+
                   <p>
-                    Hyderabad → Bengaluru has a 96.8% on-time rate.
+                    {activeRoutes.length > 0
+                      ? `${activeRoutes.length} active route(s) are currently associated with non-terminal shipments.`
+                      : "No active route data is currently available."}
                   </p>
                 </div>
 
-                <span className="insight-arrow">→</span>
+                <span className="insight-arrow">
+                  →
+                </span>
               </div>
 
               <div className="insight-item">
-                <div className="insight-icon purple-icon">↗</div>
+                <div className="insight-icon orange-icon">
+                  !
+                </div>
 
                 <div>
-                  <strong>Fleet Utilization Improved</strong>
+                  <strong>Route Attention</strong>
+
                   <p>
-                    Fleet utilization increased by 6.4% this month.
+                    {delayedShipments.length > 0
+                      ? `${delayedShipments.length} shipment(s) currently have a delayed or failed-delivery status.`
+                      : "No currently delayed shipments were found."}
                   </p>
                 </div>
 
-                <span className="insight-arrow">→</span>
+                <span className="insight-arrow">
+                  →
+                </span>
               </div>
-
-              <div className="insight-item warning">
-                <div className="insight-icon orange-icon">!</div>
-
-                <div>
-                  <strong>Route Needs Attention</strong>
-                  <p>
-                    Chennai → Hyderabad currently has a delivery delay.
-                  </p>
-                </div>
-
-                <span className="insight-arrow">→</span>
-              </div>
-
             </div>
-
           </div>
-
         </section>
 
-        {/* NETWORK SUMMARY */}
+        {/* HUBS */}
         <section className="overview-card hub-card">
-
           <div className="card-header">
             <div>
               <h3>Operational Hubs</h3>
-              <p>Shipment activity across your logistics network</p>
+
+              <p>
+                Shipment activity across your logistics
+                network
+              </p>
             </div>
 
             <span className="hub-count">
-              5 Active Hubs
+              {hubData.length} Active Hubs
             </span>
           </div>
 
           <div className="hub-grid">
-
-            {networkCities.map((hub, index) => (
-              <div className="hub-item" key={index}>
-
-                <div className="hub-icon">
-                  ◉
-                </div>
-
-                <div className="hub-info">
-                  <strong>{hub.city}</strong>
-                  <span>{hub.type}</span>
-                </div>
-
-                <div className="hub-shipments">
-                  <strong>{hub.shipments}</strong>
-                  <span>shipments</span>
-                </div>
-
+            {hubData.length === 0 ? (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  padding: "20px",
+                  textAlign: "center",
+                  color: "#626a7d",
+                  fontSize: "9px",
+                }}
+              >
+                Hub data unavailable from shipment records.
               </div>
-            ))}
+            ) : (
+              hubData.map((hub) => (
+                <div className="hub-item" key={hub.city}>
+                  <div className="hub-icon">◉</div>
 
+                  <div className="hub-info">
+                    <strong>{hub.city}</strong>
+                    <span>Hub</span>
+                  </div>
+
+                  <div className="hub-shipments">
+                    <strong>{hub.count}</strong>
+                    <span>shipments</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-
         </section>
 
         <footer className="logistics-footer">
-          <span>© 2026 ShipTrack Intelligence Platform</span>
-          <span>Logistics Network Status: Operational</span>
-        </footer>
+          <span>
+            © 2026 ShipTrack Intelligence Platform
+          </span>
 
+          <span>
+            Logistics Network Status: Operational
+          </span>
+        </footer>
       </main>
     </div>
   );
 }
 
-export default LogisticsOverview;
