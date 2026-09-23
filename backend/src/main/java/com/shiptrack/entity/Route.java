@@ -41,6 +41,21 @@ public class Route {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Column(name = "origin_latitude")
+private Double originLatitude;
+
+@Column(name = "origin_longitude")
+private Double originLongitude;
+
+@Column(name = "destination_latitude")
+private Double destinationLatitude;
+
+@Column(name = "destination_longitude")
+private Double destinationLongitude;
+
+@Column(name = "geometry", columnDefinition = "TEXT")
+private String geometry;
+
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
@@ -127,4 +142,43 @@ public class Route {
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+    public Double getOriginLatitude() {
+    return originLatitude;
+}
+
+public void setOriginLatitude(Double originLatitude) {
+    this.originLatitude = originLatitude;
+}
+
+public Double getOriginLongitude() {
+    return originLongitude;
+}
+
+public void setOriginLongitude(Double originLongitude) {
+    this.originLongitude = originLongitude;
+}
+
+public Double getDestinationLatitude() {
+    return destinationLatitude;
+}
+
+public void setDestinationLatitude(Double destinationLatitude) {
+    this.destinationLatitude = destinationLatitude;
+}
+
+public Double getDestinationLongitude() {
+    return destinationLongitude;
+}
+
+public void setDestinationLongitude(Double destinationLongitude) {
+    this.destinationLongitude = destinationLongitude;
+}
+
+public String getGeometry() {
+    return geometry;
+}
+
+public void setGeometry(String geometry) {
+    this.geometry = geometry;
+}
 }

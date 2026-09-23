@@ -64,6 +64,9 @@ public class Shipment {
     @JoinColumn(name = "assigned_operator_id", nullable = true)
     private User assignedOperator;
 
+    @OneToOne(mappedBy = "shipment", fetch = FetchType.LAZY)
+    private ProofOfDelivery proofOfDelivery;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -198,6 +201,14 @@ public class Shipment {
 
     public void setStatus(ShipmentStatus status) {
         this.status = status;
+    }
+
+    public ProofOfDelivery getProofOfDelivery() {
+        return proofOfDelivery;
+    }
+
+    public void setProofOfDelivery(ProofOfDelivery proofOfDelivery) {
+        this.proofOfDelivery = proofOfDelivery;
     }
 
     public User getAssignedOperator() {
