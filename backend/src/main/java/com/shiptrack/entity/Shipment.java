@@ -1,5 +1,6 @@
 package com.shiptrack.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.shiptrack.enums.ShipmentStatus;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -64,10 +65,11 @@ public class Shipment {
     @JoinColumn(name = "assigned_operator_id", nullable = true)
     private User assignedOperator;
 
-    @OneToOne(mappedBy = "shipment", fetch = FetchType.LAZY)
-    private ProofOfDelivery proofOfDelivery;
+   @JsonIgnore
+@OneToOne(mappedBy = "shipment", fetch = FetchType.LAZY)
+private ProofOfDelivery proofOfDelivery;
 
-    @Column(name = "created_at", nullable = false)
+@Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)

@@ -39,7 +39,7 @@ public class ProofOfDelivery {
     private ShipmentStatus deliveryStatus;
 
     /** Signature as a data URL/base64 string or a persisted signature reference. */
-    @Lob
+
     @Column(name = "signature", nullable = false, columnDefinition = "TEXT")
     private String signature;
 

@@ -1,87 +1,289 @@
+
+
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api";
 import "./OperatorProofOfDelivery.css";
 
-const deliveries = [
-  {
-    id: "TRK-2026-087",
-    order: "ORD-88391",
-    customer: "TechWorld Pvt Ltd",
-    route: "Hyderabad → Bengaluru",
-    driver: "Arjun Kumar",
-    deliveredAt: "Today, 5:42 PM",
-    receiver: "Ravi Kumar",
-    pod: "Verified",
-    method: "Signature",
-  },
-  {
-    id: "TRK-2026-091",
-    order: "ORD-88395",
-    customer: "Global Retail Ltd",
-    route: "Mumbai → Pune",
-    driver: "Rahul Sharma",
-    deliveredAt: "Today, 4:18 PM",
-    receiver: "Priya Shah",
-    pod: "Verified",
-    method: "Photo + Signature",
-  },
-  {
-    id: "TRK-2026-094",
-    order: "ORD-88398",
-    customer: "FreshMart India",
-    route: "Bengaluru → Chennai",
-    driver: "Suresh Babu",
-    deliveredAt: "Today, 3:51 PM",
-    receiver: "Kiran Rao",
-    pod: "Verified",
-    method: "Signature",
-  },
-  {
-    id: "TRK-2026-098",
-    order: "ORD-88402",
-    customer: "Metro Electronics",
-    route: "Chennai → Hyderabad",
-    driver: "Vijay Reddy",
-    deliveredAt: "Today, 2:35 PM",
-    receiver: "Anil Kumar",
-    pod: "Pending",
-    method: "Awaiting POD",
-  },
-  {
-    id: "TRK-2026-099",
-    order: "ORD-88403",
-    customer: "Urban Fashion",
-    route: "Delhi → Jaipur",
-    driver: "Amit Singh",
-    deliveredAt: "Today, 1:48 PM",
-    receiver: "Neha Gupta",
-    pod: "Exception",
-    method: "Signature Missing",
-  },
-  {
-    id: "TRK-2026-100",
-    order: "ORD-88404",
-    customer: "Smart Home India",
-    route: "Mumbai → Nashik",
-    driver: "Manoj Verma",
-    deliveredAt: "Today, 12:56 PM",
-    receiver: "Vivek Joshi",
-    pod: "Verified",
-    method: "Photo + Signature",
-  },
+const STATUS_OPTIONS = [
+  "CREATED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "FAILED_DELIVERY",
+  "CANCELLED",
 ];
 
+function formatDateTime(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+function getStatusClass(status) {
+  if (status === "DELIVERED") return "verified-status";
+  if (status === "FAILED_DELIVERY" || status === "CANCELLED") {
+    return "exception-status";
+  }
+
+  return "pending-status";
+}
+
 function OperatorProofOfDelivery() {
+  const [shipments, setShipments] = useState([]);
+  const [podRecords, setPodRecords] = useState({});
+  const [selectedShipment, setSelectedShipment] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+  const [podLoading, setPodLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const [remarks, setRemarks] = useState("");
+  const [deliveredAt, setDeliveredAt] = useState("");
+  const [deliveryStatus, setDeliveryStatus] = useState("DELIVERED");
+
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+
+  useEffect(() => {
+    loadShipments();
+  }, []);
+
+  async function loadShipments() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const data = await apiRequest("/api/shipments");
+
+      const list = Array.isArray(data)
+        ? data
+        : data?.content || data?.shipments || [];
+
+      setShipments(list);
+
+      await loadPodRecords(list);
+    } catch (err) {
+  console.error("Failed to load shipment data:", err);
+  setError("Unable to load delivery information. Please try again.");
+}finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadPodRecords(list) {
+    const records = {};
+
+    await Promise.all(
+      list.map(async (shipment) => {
+        try {
+          const pod = await apiRequest(
+            `/api/shipments/${shipment.id}/pod`
+          );
+
+          if (pod) {
+            records[shipment.id] = pod;
+          }
+        } catch {
+          // A shipment without POD is normal.
+        }
+      })
+    );
+
+    setPodRecords(records);
+  }
+
+  function openShipment(shipment) {
+    setSelectedShipment(shipment);
+
+    const existingPod = podRecords[shipment.id];
+
+    if (existingPod) {
+      setRemarks(existingPod.remarks || "");
+      setDeliveryStatus(existingPod.deliveryStatus || "DELIVERED");
+      setDeliveredAt(
+        existingPod.deliveredAt
+          ? existingPod.deliveredAt.slice(0, 16)
+          : ""
+      );
+    } else {
+      setRemarks("");
+      setDeliveryStatus("DELIVERED");
+
+      const now = new Date();
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+
+      setDeliveredAt(now.toISOString().slice(0, 16));
+    }
+
+    setHasSignature(false);
+
+    requestAnimationFrame(() => {
+      clearSignature();
+    });
+  }
+
+  function closeShipment() {
+    setSelectedShipment(null);
+    setError("");
+    setHasSignature(false);
+  }
+
+  function getCanvasCoordinates(event) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  }
+
+  function startDrawing(event) {
+    const canvas = canvasRef.current;
+
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+    const { x, y } = getCanvasCoordinates(event);
+
+    context.beginPath();
+    context.moveTo(x, y);
+
+    setIsDrawing(true);
+    setHasSignature(true);
+  }
+
+  function draw(event) {
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+    const { x, y } = getCanvasCoordinates(event);
+
+    context.lineWidth = 2;
+    context.lineCap = "round";
+    context.strokeStyle = "#111827";
+
+    context.lineTo(x, y);
+    context.stroke();
+  }
+
+  function stopDrawing() {
+    setIsDrawing(false);
+  }
+
+  function clearSignature() {
+    const canvas = canvasRef.current;
+
+    if (!canvas) return;
+
+    const context = canvas.getContext("2d");
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    setHasSignature(false);
+  }
+
+  function getSignatureData() {
+    const canvas = canvasRef.current;
+
+    if (!canvas || !hasSignature) {
+      return "";
+    }
+
+    return canvas.toDataURL("image/png");
+  }
+
+  async function savePod() {
+    if (!selectedShipment) return;
+
+    if (selectedShipment.status !== "DELIVERED") {
+      setError(
+        "POD can only be created after the shipment is DELIVERED."
+      );
+      return;
+    }
+
+    if (podRecords[selectedShipment.id]) {
+      setError("A POD already exists for this shipment.");
+      return;
+    }
+
+    const signature = getSignatureData();
+
+    if (!signature) {
+      setError("Please capture the receiver signature.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+
+      const payload = {
+        deliveredAt: deliveredAt
+          ? new Date(deliveredAt).toISOString().slice(0, 19)
+          : new Date().toISOString().slice(0, 19),
+        deliveryStatus,
+        signature,
+        remarks,
+      };
+
+      const createdPod = await apiRequest(
+        `/api/shipments/${selectedShipment.id}/pod`,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      );
+
+      setPodRecords((previous) => ({
+        ...previous,
+        [selectedShipment.id]: createdPod,
+      }));
+
+      closeShipment();
+    } catch (err) {
+      setError(err.message || "Failed to save proof of delivery.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const deliveredShipments = shipments.filter(
+    (shipment) => shipment.status === "DELIVERED"
+  );
+
+  const verifiedCount = Object.keys(podRecords).length;
+
+  const pendingCount = deliveredShipments.filter(
+    (shipment) => !podRecords[shipment.id]
+  ).length;
+
+  const exceptionCount = shipments.filter(
+    (shipment) =>
+      shipment.status === "FAILED_DELIVERY" ||
+      shipment.status === "CANCELLED"
+  ).length;
+
   return (
     <div className="pod-page">
-
-      {/* ================= SIDEBAR ================= */}
-
       <aside className="pod-sidebar">
-
         <div className="pod-brand">
-          <div className="pod-brand-logo">
-            S
-          </div>
+          <div className="pod-brand-logo">S</div>
 
           <div>
             <h2>ShipTrack</h2>
@@ -89,14 +291,8 @@ function OperatorProofOfDelivery() {
           </div>
         </div>
 
-
         <nav className="pod-nav">
-
-          <Link
-            to="/dashboard/operator"
-            className="pod-nav-link"
-          >
-            <span>⌂</span>
+          <Link to="/dashboard/operator" className="pod-nav-link">
             Dashboard
           </Link>
 
@@ -104,7 +300,6 @@ function OperatorProofOfDelivery() {
             to="/operator/shipment-tracking"
             className="pod-nav-link"
           >
-            <span>▣</span>
             Shipment Tracking
           </Link>
 
@@ -112,7 +307,6 @@ function OperatorProofOfDelivery() {
             to="/operator/live-delivery"
             className="pod-nav-link"
           >
-            <span>◎</span>
             Live Deliveries
           </Link>
 
@@ -120,23 +314,14 @@ function OperatorProofOfDelivery() {
             to="/operator/driver-tracking"
             className="pod-nav-link"
           >
-            <span>♙</span>
             Driver Tracking
           </Link>
 
-          <Link
-            to="/operator/routes"
-            className="pod-nav-link"
-          >
-            <span>⌁</span>
+          <Link to="/operator/routes" className="pod-nav-link">
             Route Management
           </Link>
 
-          <Link
-            to="/operator/eta-delay"
-            className="pod-nav-link"
-          >
-            <span>◷</span>
+          <Link to="/operator/eta-delay" className="pod-nav-link">
             ETA & Delays
           </Link>
 
@@ -144,51 +329,29 @@ function OperatorProofOfDelivery() {
             to="/operator/pod"
             className="pod-nav-link active"
           >
-            <span>✓</span>
             Proof of Delivery
           </Link>
-
         </nav>
 
-
         <div className="pod-sidebar-bottom">
-
           <div className="pod-user">
-
-            <div className="pod-avatar">
-              OP
-            </div>
+            <div className="pod-avatar">OP</div>
 
             <div>
               <strong>Logistics Operator</strong>
               <span>Operations Team</span>
             </div>
-
           </div>
 
-          <Link
-            to="/login"
-            className="pod-logout"
-          >
-            <span>↪</span>
+          <Link to="/login" className="pod-logout">
             Logout
           </Link>
-
         </div>
-
       </aside>
 
-
-      {/* ================= MAIN ================= */}
-
       <main className="pod-main">
-
-        {/* HEADER */}
-
         <header className="pod-header">
-
           <div>
-
             <span className="pod-eyebrow">
               LOGISTICS OPERATIONS
             </span>
@@ -196,251 +359,76 @@ function OperatorProofOfDelivery() {
             <h1>Proof of Delivery</h1>
 
             <p>
-              Review delivery confirmations, signatures, photos and POD
-              exceptions.
+              View and record delivery confirmations directly from
+              shipment data.
             </p>
-
           </div>
 
-
-          <div className="pod-header-actions">
-
-            <div className="pod-live-status">
-              <span></span>
-              System Live
-            </div>
-
-            <button className="pod-notification">
-              ♢
-              <span>3</span>
-            </button>
-
+          <div className="pod-live-status">
+            <span></span>
+             System Online
           </div>
-
         </header>
 
-
-        {/* ================= STATS ================= */}
+        {error && (
+          <div className="pod-error">
+            {error}
+          </div>
+        )}
 
         <section className="pod-stats">
-
           <div className="pod-stat-card orange">
-
-            <div className="pod-stat-icon">
-              ✓
-            </div>
+            <div className="pod-stat-icon">✓</div>
 
             <div>
-              <span>Delivered Today</span>
-              <strong>87</strong>
-              <small>Successful deliveries</small>
-            </div>
-
+  <span>Delivered Shipments</span>
+  <strong>{deliveredShipments.length}</strong>
+</div>
           </div>
 
-
           <div className="pod-stat-card green">
-
-            <div className="pod-stat-icon">
-              ✓
-            </div>
+            <div className="pod-stat-icon">✓</div>
 
             <div>
               <span>POD Verified</span>
-              <strong>82</strong>
-              <small>94.3% verified</small>
+              <strong>{verifiedCount}</strong>
+              <small>Verified deliveries</small>
             </div>
-
           </div>
 
-
           <div className="pod-stat-card purple">
-
-            <div className="pod-stat-icon">
-              ◷
-            </div>
+            <div className="pod-stat-icon">◷</div>
 
             <div>
               <span>POD Pending</span>
-              <strong>04</strong>
+              <strong>{pendingCount}</strong>
               <small>Awaiting confirmation</small>
             </div>
-
           </div>
-
 
           <div className="pod-stat-card red">
-
-            <div className="pod-stat-icon">
-              !
-            </div>
+            <div className="pod-stat-icon">!</div>
 
             <div>
-              <span>POD Exceptions</span>
-              <strong>01</strong>
-              <small>Needs review</small>
+              <span>Exceptions</span>
+              <strong>{exceptionCount}</strong>
+              <small>Requires attention</small>
             </div>
-
           </div>
-
         </section>
-
-
-        {/* ================= OVERVIEW ================= */}
-
-        <section className="pod-top-grid">
-
-          {/* POD COMPLETION */}
-
-          <div className="pod-panel">
-
-            <div className="pod-panel-header">
-
-              <div>
-                <span className="pod-panel-label">
-                  DELIVERY CONFIRMATION
-                </span>
-
-                <h2>POD Completion</h2>
-              </div>
-
-              <span className="pod-live-badge">
-                ● Live
-              </span>
-
-            </div>
-
-
-            <div className="pod-completion">
-
-              <div className="pod-ring">
-
-                <div>
-                  <strong>94.3%</strong>
-                  <span>Verified</span>
-                </div>
-
-              </div>
-
-
-              <div className="pod-completion-list">
-
-                <div>
-                  <span className="pod-dot verified"></span>
-                  <p>Verified</p>
-                  <strong>82</strong>
-                </div>
-
-                <div>
-                  <span className="pod-dot pending"></span>
-                  <p>Pending</p>
-                  <strong>04</strong>
-                </div>
-
-                <div>
-                  <span className="pod-dot exception"></span>
-                  <p>Exception</p>
-                  <strong>01</strong>
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
-
-
-          {/* POD METHODS */}
-
-          <div className="pod-panel">
-
-            <div className="pod-panel-header">
-
-              <div>
-                <span className="pod-panel-label">
-                  CONFIRMATION METHODS
-                </span>
-
-                <h2>POD Methods</h2>
-              </div>
-
-            </div>
-
-
-            <div className="pod-method-list">
-
-              <div className="pod-method">
-
-                <div className="method-icon">
-                  ✎
-                </div>
-
-                <div>
-                  <strong>Signature</strong>
-                  <span>56 deliveries</span>
-                </div>
-
-                <b>68%</b>
-
-              </div>
-
-
-              <div className="pod-method">
-
-                <div className="method-icon purple">
-                  ▣
-                </div>
-
-                <div>
-                  <strong>Photo + Signature</strong>
-                  <span>26 deliveries</span>
-                </div>
-
-                <b>32%</b>
-
-              </div>
-
-
-              <div className="pod-method">
-
-                <div className="method-icon green">
-                  ✓
-                </div>
-
-                <div>
-                  <strong>Digital Confirmation</strong>
-                  <span>Included in verified POD</span>
-                </div>
-
-                <b>100%</b>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </section>
-
-
-        {/* ================= TABLE ================= */}
 
         <section className="pod-panel pod-table-panel">
-
           <div className="pod-panel-header">
-
             <div>
-
               <span className="pod-panel-label">
-                RECENT DELIVERIES
+                SHIPMENT DELIVERY RECORDS
               </span>
 
-              <h2>Delivery Confirmation Records</h2>
+              <h2>Proof of Delivery</h2>
 
               <p>
-                Review proof of delivery information for completed shipments.
-              </p>
-
+  Shipment and delivery information
+</p>
             </div>
 
             <Link
@@ -449,191 +437,374 @@ function OperatorProofOfDelivery() {
             >
               View shipments →
             </Link>
-
           </div>
 
-
-          <div className="pod-table-wrapper">
-
-            <table className="pod-table">
-
-              <thead>
-
-                <tr>
-                  <th>Shipment</th>
-                  <th>Customer</th>
-                  <th>Route</th>
-                  <th>Driver</th>
-                  <th>Delivered</th>
-                  <th>Receiver</th>
-                  <th>POD</th>
-                  <th>Method</th>
-                </tr>
-
-              </thead>
-
-
-              <tbody>
-
-                {deliveries.map((delivery) => (
-
-                  <tr key={delivery.id}>
-
-                    <td>
-
-                      <div className="pod-shipment">
-
-                        <span className="pod-shipment-icon">
-                          ✓
-                        </span>
-
-                        <div>
-
-                          <strong>
-                            {delivery.id}
-                          </strong>
-
-                          <small>
-                            {delivery.order}
-                          </small>
-
-                        </div>
-
-                      </div>
-
-                    </td>
-
-
-                    <td>
-                      <span className="pod-customer">
-                        {delivery.customer}
-                      </span>
-                    </td>
-
-
-                    <td>
-                      <span className="pod-route">
-                        {delivery.route}
-                      </span>
-                    </td>
-
-
-                    <td>
-                      <span className="pod-driver">
-                        {delivery.driver}
-                      </span>
-                    </td>
-
-
-                    <td>
-                      <span className="pod-time">
-                        {delivery.deliveredAt}
-                      </span>
-                    </td>
-
-
-                    <td>
-                      <span className="receiver-name">
-                        {delivery.receiver}
-                      </span>
-                    </td>
-
-
-                    <td>
-
-                      <span
-                        className={`pod-status ${
-                          delivery.pod === "Verified"
-                            ? "verified-status"
-                            : delivery.pod === "Pending"
-                            ? "pending-status"
-                            : "exception-status"
-                        }`}
-                      >
-                        <span></span>
-                        {delivery.pod}
-                      </span>
-
-                    </td>
-
-
-                    <td>
-                      <span className="pod-method-text">
-                        {delivery.method}
-                      </span>
-                    </td>
-
+          {loading ? (
+            <div className="pod-empty-state">
+              Loading shipment data...
+            </div>
+          ) : shipments.length === 0 ? (
+            <div className="pod-empty-state">
+              No shipments found.
+            </div>
+          ) : (
+            <div className="pod-table-wrapper">
+              <table className="pod-table">
+                <thead>
+                  <tr>
+                    <th>Shipment</th>
+                    <th>Reference</th>
+                    <th>Status</th>
+                    <th>Receiver</th>
+                    <th>Delivered</th>
+                    <th>POD</th>
+                    <th>Action</th>
                   </tr>
+                </thead>
 
-                ))}
+                <tbody>
+                  {shipments.map((shipment) => {
+                    const pod = podRecords[shipment.id];
 
-              </tbody>
+                    return (
+                      <tr key={shipment.id}>
+                        <td>
+                          <div className="pod-shipment">
+                            <span className="pod-shipment-icon">
+                              ✓
+                            </span>
 
-            </table>
+                            <div>
+                              <strong>
+                                {shipment.trackingNumber ||
+                                  `Shipment #${shipment.id}`}
+                              </strong>
 
-          </div>
+                              <small>
+                                ID: {shipment.id}
+                              </small>
+                            </div>
+                          </div>
+                        </td>
 
+                        <td>
+                          {shipment.referenceNumber ||
+                            shipment.orderId ||
+                            shipment.reference ||
+                            "—"}
+                        </td>
+
+                        <td>
+                          <span
+                            className={`pod-status ${getStatusClass(
+                              shipment.status
+                            )}`}
+                          >
+                            <span></span>
+                            {shipment.status || "UNKNOWN"}
+                          </span>
+                        </td>
+
+                        <td>
+                          {pod?.receiverName ||
+                            shipment.receiverName ||
+                            shipment.receiver?.name ||
+                            "—"}
+                        </td>
+
+                        <td>
+                          {pod
+                            ? formatDateTime(pod.deliveredAt)
+                            : "—"}
+                        </td>
+
+                        <td>
+                          <span
+                            className={`pod-status ${
+                              pod
+                                ? "verified-status"
+                                : shipment.status === "DELIVERED"
+                                ? "pending-status"
+                                : "exception-status"
+                            }`}
+                          >
+                            <span></span>
+                            {pod
+                              ? "Verified"
+                              : shipment.status === "DELIVERED"
+                              ? "Pending"
+                              : "Not Available"}
+                          </span>
+                        </td>
+
+                        <td>
+                          <button
+                            type="button"
+                            className="pod-view-link"
+                            onClick={() =>
+                              openShipment(shipment)
+                            }
+                          >
+                            {pod ? "View POD" : "Open"} →
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
-
-
-        {/* ================= BOTTOM ================= */}
-
-        <section className="pod-bottom-grid">
-
-          <div className="pod-info-card">
-
-            <div className="pod-info-icon">
-              ✓
-            </div>
-
-            <div>
-              <span>Verification Rate</span>
-              <strong>94.3%</strong>
-              <small>
-                POD records successfully verified
-              </small>
-            </div>
-
-          </div>
-
-
-          <div className="pod-info-card">
-
-            <div className="pod-info-icon purple">
-              ◷
-            </div>
-
-            <div>
-              <span>Average POD Time</span>
-              <strong>8.4 min</strong>
-              <small>
-                From delivery completion to confirmation
-              </small>
-            </div>
-
-          </div>
-
-
-          <div className="pod-info-card warning">
-
-            <div className="pod-info-icon">
-              !
-            </div>
-
-            <div>
-              <span>Needs Attention</span>
-              <strong>1 Record</strong>
-              <small>
-                Signature missing from delivery record
-              </small>
-            </div>
-
-          </div>
-
-        </section>
-
       </main>
 
+      {selectedShipment && (
+        <div className="pod-modal-backdrop">
+          <div className="pod-modal">
+            <div className="pod-modal-header">
+              <div>
+                <span className="pod-panel-label">
+                  PROOF OF DELIVERY
+                </span>
+
+                <h2>
+                  {selectedShipment.trackingNumber ||
+                    `Shipment #${selectedShipment.id}`}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="pod-close"
+                onClick={closeShipment}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="pod-details-grid">
+              <div>
+                <span>Shipment ID</span>
+                <strong>{selectedShipment.id}</strong>
+              </div>
+
+              <div>
+                <span>Reference</span>
+                <strong>
+                  {selectedShipment.referenceNumber ||
+                    selectedShipment.orderId ||
+                    selectedShipment.reference ||
+                    "—"}
+                </strong>
+              </div>
+
+              <div>
+                <span>Shipment Status</span>
+                <strong>
+                  {selectedShipment.status || "—"}
+                </strong>
+              </div>
+
+              <div>
+                <span>Tracking Number</span>
+                <strong>
+                  {selectedShipment.trackingNumber || "—"}
+                </strong>
+              </div>
+            </div>
+
+            <div className="pod-receiver-section">
+              <h3>Receiver Details</h3>
+
+              <div className="pod-details-grid">
+                <div>
+                  <span>Name</span>
+                  <strong>
+                    {podRecords[selectedShipment.id]
+                      ?.receiverName ||
+                      selectedShipment.receiverName ||
+                      selectedShipment.receiver?.name ||
+                      "—"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Phone</span>
+                  <strong>
+                    {podRecords[selectedShipment.id]
+                      ?.receiverPhone ||
+                      selectedShipment.receiverPhone ||
+                      selectedShipment.receiver?.phone ||
+                      "—"}
+                  </strong>
+                </div>
+
+                <div className="pod-address">
+                  <span>Address</span>
+                  <strong>
+                    {podRecords[selectedShipment.id]
+                      ?.receiverAddress ||
+                      selectedShipment.receiverAddress ||
+                      selectedShipment.receiver?.address ||
+                      "—"}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {podRecords[selectedShipment.id] ? (
+              <div className="pod-existing-record">
+                <h3>Existing POD</h3>
+
+                <div className="pod-details-grid">
+                  <div>
+                    <span>Delivery Time</span>
+                    <strong>
+                      {formatDateTime(
+                        podRecords[selectedShipment.id]
+                          .deliveredAt
+                      )}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Status</span>
+                    <strong>
+                      {
+                        podRecords[selectedShipment.id]
+                          .deliveryStatus
+                      }
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Delivered By</span>
+                    <strong>
+                      {
+                        podRecords[selectedShipment.id]
+                          .deliveredByUserName
+                      }
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Remarks</span>
+                    <strong>
+                      {podRecords[selectedShipment.id].remarks ||
+                        "—"}
+                    </strong>
+                  </div>
+                </div>
+
+                {podRecords[selectedShipment.id].signature && (
+                  <div className="pod-signature-preview">
+                    <h3>Receiver Signature</h3>
+
+                    <img
+                      src={
+                        podRecords[selectedShipment.id].signature
+                      }
+                      alt="Receiver signature"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="pod-form-section">
+                  <h3>Delivery Confirmation</h3>
+
+                  <div className="pod-form-grid">
+                    <label>
+                      Delivery Time
+                      <input
+                        type="datetime-local"
+                        value={deliveredAt}
+                        onChange={(event) =>
+                          setDeliveredAt(event.target.value)
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Delivery Status
+                      <select
+                        value={deliveryStatus}
+                        onChange={(event) =>
+                          setDeliveryStatus(event.target.value)
+                        }
+                      >
+                        <option value="DELIVERED">
+                          DELIVERED
+                        </option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <label className="pod-remarks">
+                    Remarks
+                    <textarea
+                      value={remarks}
+                      onChange={(event) =>
+                        setRemarks(event.target.value)
+                      }
+                      placeholder="Enter delivery remarks..."
+                      rows="3"
+                    />
+                  </label>
+                </div>
+
+                <div className="pod-signature-section">
+                  <div className="pod-signature-header">
+                    <h3>Receiver Signature</h3>
+
+                    <button
+                      type="button"
+                      onClick={clearSignature}
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  <canvas
+                    ref={canvasRef}
+                    width={700}
+                    height={220}
+                    className="pod-signature-canvas"
+                    onPointerDown={startDrawing}
+                    onPointerMove={draw}
+                    onPointerUp={stopDrawing}
+                    onPointerLeave={stopDrawing}
+                  />
+
+                  <small>
+                    Ask the receiver to sign inside the box.
+                  </small>
+                </div>
+
+                <div className="pod-modal-actions">
+                  <button
+                    type="button"
+                    className="pod-cancel-button"
+                    onClick={closeShipment}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    className="pod-save-button"
+                    onClick={savePod}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : "Save Proof of Delivery"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
