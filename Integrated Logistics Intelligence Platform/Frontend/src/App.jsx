@@ -1,10 +1,14 @@
-import ShipmentDetailsPage from './pages/ShipmentDetailsPage'
+import DeliveryConfirmation from './components/delivery/DeliveryConfirmation'
+import ShipmentDetailsPage from './components/shipment/ShipmentDetailsPage'
 import './App.css'
 
 function App() {
-  return (
+ return (
+  <>
     <ShipmentDetailsPage />
-  )
+    <DeliveryConfirmation />
+  </>
+)
 }
 
 export default App
