@@ -4,13 +4,15 @@ import com.shiptrack.enums.ShipmentStatus;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "shipments", indexes = {
-    @Index(name = "idx_shipments_business_client", columnList = "business_client_id"),
-    @Index(name = "idx_shipments_customer", columnList = "customer_id"),
-    @Index(name = "idx_shipments_assigned_operator", columnList = "assigned_operator_id"),
-    @Index(name = "idx_shipments_status", columnList = "status")
+        @Index(name = "idx_shipments_business_client", columnList = "business_client_id"),
+        @Index(name = "idx_shipments_customer", columnList = "customer_id"),
+        @Index(name = "idx_shipments_assigned_operator", columnList = "assigned_operator_id"),
+        @Index(name = "idx_shipments_status", columnList = "status")
 })
 public class Shipment {
 
@@ -63,6 +65,27 @@ public class Shipment {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_operator_id", nullable = true)
     private User assignedOperator;
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ShipmentStatusHistory> statusHistory = new ArrayList<>();
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ShipmentLocation> locations = new ArrayList<>();
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Route> routes = new ArrayList<>();
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Delivery> deliveries = new ArrayList<>();
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<DelayPrediction> delayPredictions = new ArrayList<>();
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Forecast> forecasts = new ArrayList<>();
+
+    @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Notification> notifications = new ArrayList<>();
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
