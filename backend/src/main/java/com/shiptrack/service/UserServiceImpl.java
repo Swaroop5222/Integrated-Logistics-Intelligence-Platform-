@@ -11,6 +11,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -86,6 +88,14 @@ public class UserServiceImpl implements UserService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = getUserByEmail(email);
         return mapToDto(user);
+    }
+
+    @Override
+    public List<UserDto> getLogisticsOperators() {
+        return userRepository.findByRole(Role.LOGISTICS_OPERATOR)
+                .stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
     }
 
     @Override

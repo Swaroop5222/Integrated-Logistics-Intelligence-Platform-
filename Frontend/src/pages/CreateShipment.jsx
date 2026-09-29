@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./CreateShipment.css";
 import { apiRequest } from "../api";
 
 function CreateShipment() {
   const navigate = useNavigate();
+  const [operators, setOperators] = useState([]);
+  const [operatorLoadError, setOperatorLoadError] = useState("");
 
   // Get currently logged-in user
   const user = JSON.parse(
@@ -48,10 +50,35 @@ function CreateShipment() {
     expectedDelivery: "",
     priority: "Standard",
     transportMode: "Road",
+    assignedOperatorId: "",
   });
 
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadOperators = async () => {
+      try {
+        const data = await apiRequest("/api/users/operators");
+        if (active) {
+          setOperators(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        if (active) {
+          console.error("Load logistics operators error:", error);
+          setOperatorLoadError(`Unable to load logistics operators: ${error.message}`);
+        }
+      }
+    };
+
+    loadOperators();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -103,7 +130,9 @@ function CreateShipment() {
 
       const payload = {
         customerId: null,
-        assignedOperatorId: null,
+        assignedOperatorId: formData.assignedOperatorId
+          ? Number(formData.assignedOperatorId)
+          : null,
         referenceId: formData.referenceId.trim() || null,
 
         senderName: formData.senderName.trim(),
@@ -313,6 +342,12 @@ function CreateShipment() {
           <div className="create-success">
             <span>✓</span>
             {message}
+          </div>
+        )}
+
+        {operatorLoadError && (
+          <div className="create-success">
+            {operatorLoadError}
           </div>
         )}
 
@@ -932,6 +967,67 @@ function CreateShipment() {
                   <option value="Sea">
                     Sea
                   </option>
+                </select>
+
+              </div>
+
+            </div>
+
+          </section>
+
+          {/* LOGISTICS OPERATOR */}
+
+          <section className="form-section">
+
+            <div className="form-section-header">
+
+              <div className="section-number">
+                06
+              </div>
+
+              <div>
+                <span>ASSIGNMENT</span>
+
+                <h2>
+                  Logistics Operator
+                </h2>
+
+                <p>
+                  Assign an operator to manage this shipment.
+                </p>
+              </div>
+
+            </div>
+
+            <div className="form-grid one-column">
+
+              <div className="form-field">
+
+                <label htmlFor="assignedOperatorId">
+                  Assign Logistics Operator
+                </label>
+
+                <select
+                  id="assignedOperatorId"
+                  name="assignedOperatorId"
+                  value={formData.assignedOperatorId}
+                  onChange={handleChange}
+                  disabled={operatorLoadError !== "" || operators.length === 0}
+                >
+                  <option value="">
+                    {operatorLoadError
+                      ? "Operators unavailable"
+                      : operators.length === 0
+                        ? "No operators available"
+                        : "Select an operator"}
+                  </option>
+
+                  {operators.map((operator) => (
+                    <option key={operator.id} value={operator.id}>
+                      {operator.fullName}
+                      {operator.email ? ` (${operator.email})` : ""}
+                    </option>
+                  ))}
                 </select>
 
               </div>

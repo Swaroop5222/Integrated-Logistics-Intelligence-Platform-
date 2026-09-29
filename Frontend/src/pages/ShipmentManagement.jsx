@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
-  CalendarDays,
   Clock3,
   MapPin,
   Package,
@@ -37,91 +36,25 @@ function getTrackingNumber(shipment) {
 }
 
 function getCustomerName(shipment) {
-  if (typeof shipment?.customer === "string") {
-    return shipment.customer;
-  }
-
-  return (
-    shipment?.customer?.name ||
-    shipment?.customer?.fullName ||
-    shipment?.customer?.username ||
-    shipment?.customerName ||
-    shipment?.receiverName ||
-    "Data unavailable"
-  );
+  return shipment?.receiverName || "Data unavailable";
 }
 
-function getCustomerEmail(shipment) {
-  return (
-    shipment?.customer?.email ||
-    shipment?.customerEmail ||
-    "Data unavailable"
-  );
+function getCustomerPhone(shipment) {
+  return shipment?.receiverPhone || "Data unavailable";
 }
 
 function getOrigin(shipment) {
-  return (
-    shipment?.senderAddress ||
-    shipment?.senderCity ||
-    shipment?.origin ||
-    shipment?.originCity ||
-    shipment?.sender?.city ||
-    "Data unavailable"
-  );
+  const senderName = shipment?.senderName || "Data unavailable";
+  const senderAddress = shipment?.senderAddress || "Data unavailable";
+
+  return `${senderName} · ${senderAddress}`;
 }
 
 function getDestination(shipment) {
-  return (
-    shipment?.receiverAddress ||
-    shipment?.receiverCity ||
-    shipment?.destination ||
-    shipment?.destinationCity ||
-    shipment?.receiver?.city ||
-    "Data unavailable"
-  );
-}
+  const receiverName = shipment?.receiverName || "Data unavailable";
+  const receiverAddress = shipment?.receiverAddress || "Data unavailable";
 
-/*
- * Priority is displayed only when the backend actually provides it.
- * No Standard/Express/Urgent value is invented.
- */
-function getPriority(shipment) {
-  const priority =
-    shipment?.priority ||
-    shipment?.deliveryPriority ||
-    shipment?.serviceType;
-
-  if (!priority) {
-    return "Data unavailable";
-  }
-
-  return String(priority)
-    .replaceAll("_", " ")
-    .toLowerCase()
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function getPriorityClass(shipment) {
-  const priority = String(
-    shipment?.priority ||
-      shipment?.deliveryPriority ||
-      shipment?.serviceType ||
-      ""
-  ).toUpperCase();
-
-  if (priority.includes("URGENT")) {
-    return "urgent";
-  }
-
-  if (priority.includes("EXPRESS")) {
-    return "express";
-  }
-
-  if (priority) {
-    return "standard";
-  }
-
-  return "";
+  return `${receiverName} · ${receiverAddress}`;
 }
 
 function getStatusClass(status) {
@@ -251,12 +184,14 @@ function ShipmentManagement() {
 
       const searchableText = [
         getTrackingNumber(shipment),
-        shipment?.referenceNumber,
         shipment?.referenceId,
         getCustomerName(shipment),
-        getCustomerEmail(shipment),
+        getCustomerPhone(shipment),
         getOrigin(shipment),
         getDestination(shipment),
+        shipment?.packageDescription,
+        shipment?.packageWeightKg,
+        shipment?.assignedOperatorName,
         status,
       ]
         .filter(Boolean)
@@ -533,13 +468,18 @@ function ShipmentManagement() {
               <table className="management-table">
                 <thead>
                   <tr>
-                    <th>SHIPMENT</th>
-                    <th>CUSTOMER</th>
-                    <th>ROUTE</th>
-                    <th>CREATED</th>
-                    <th>PRIORITY</th>
+                    <th>TRACKING NUMBER</th>
+                    <th>REFERENCE / ORDER ID</th>
+                    <th>SENDER</th>
+                    <th>SENDER PHONE</th>
+                    <th>RECEIVER</th>
+                    <th>RECEIVER PHONE</th>
+                    <th>PACKAGE</th>
+                    <th>WEIGHT</th>
                     <th>STATUS</th>
-                    <th>UPDATED</th>
+                    <th>ASSIGNED LOGISTICS OPERATOR</th>
+                    <th>CREATED DATE</th>
+                    <th>UPDATED DATE</th>
                     <th>ACTION</th>
                   </tr>
                 </thead>
@@ -547,7 +487,7 @@ function ShipmentManagement() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="8">
+                      <td colSpan="13">
                         <div className="no-results">
                           Loading shipments...
                         </div>
@@ -555,7 +495,7 @@ function ShipmentManagement() {
                     </tr>
                   ) : filteredShipments.length === 0 ? (
                     <tr>
-                      <td colSpan="8">
+                      <td colSpan="13">
                         <div className="no-results">
                           <Package size={28} />
 
@@ -575,14 +515,6 @@ function ShipmentManagement() {
                       const status = getStatus(shipment);
                       const trackingNumber =
                         getTrackingNumber(shipment);
-                      const customer =
-                        getCustomerName(shipment);
-                      const customerEmail =
-                        getCustomerEmail(shipment);
-                      const origin =
-                        getOrigin(shipment);
-                      const destination =
-                        getDestination(shipment);
 
                       return (
                         <tr
@@ -591,71 +523,49 @@ function ShipmentManagement() {
                             shipment?.trackingNumber
                           }
                         >
-                          {/* SHIPMENT */}
+                          {/* TRACKING NUMBER */}
                           <td>
-                            <div className="customer-name">
-                              <strong>
-                                {trackingNumber}
-                              </strong>
-
-                              <small>
-                                {shipment?.referenceNumber ||
-                                  shipment?.referenceId ||
-                                  "Data unavailable"}
-                              </small>
-                            </div>
+                            {trackingNumber}
                           </td>
 
-                          {/* CUSTOMER */}
+                          {/* REFERENCE / ORDER ID */}
                           <td>
-                            <div className="customer-name">
-                              <strong>
-                                {customer}
-                              </strong>
-
-                              <small>
-                                {customerEmail}
-                              </small>
-                            </div>
+                            {shipment?.referenceId ||
+                              "Data unavailable"}
                           </td>
 
-                          {/* ROUTE */}
+                          {/* SENDER */}
                           <td>
-                            <div className="route-text">
-                              <span>
-                                {origin}
-                              </span>
-
-                              <ArrowRight size={14} />
-
-                              <span>
-                                {destination}
-                              </span>
-                            </div>
+                            {getOrigin(shipment)}
                           </td>
 
-                          {/* CREATED */}
+                          {/* SENDER PHONE */}
                           <td>
-                            <div className="date-text">
-                              <CalendarDays size={14} />
-
-                              <span>
-                                {formatDate(
-                                  shipment?.createdAt
-                                )}
-                              </span>
-                            </div>
+                            {shipment?.senderPhone ||
+                              "Data unavailable"}
                           </td>
 
-                          {/* PRIORITY */}
+                          {/* RECEIVER */}
                           <td>
-                            <span
-                              className={`priority ${getPriorityClass(
-                                shipment
-                              )}`}
-                            >
-                              {getPriority(shipment)}
-                            </span>
+                            {getDestination(shipment)}
+                          </td>
+
+                          {/* RECEIVER PHONE */}
+                          <td>
+                            {getCustomerPhone(shipment)}
+                          </td>
+
+                          {/* PACKAGE */}
+                          <td>
+                            {shipment?.packageDescription ||
+                              "Data unavailable"}
+                          </td>
+
+                          {/* WEIGHT */}
+                          <td>
+                            {shipment?.packageWeightKg != null
+                              ? shipment.packageWeightKg
+                              : "Data unavailable"}
                           </td>
 
                           {/* STATUS */}
@@ -670,17 +580,20 @@ function ShipmentManagement() {
                             </span>
                           </td>
 
-                          {/* UPDATED */}
+                          {/* ASSIGNED LOGISTICS OPERATOR */}
                           <td>
-                            <div className="date-text">
-                              <Clock3 size={14} />
+                            {shipment?.assignedOperatorName ||
+                              "Data unavailable"}
+                          </td>
 
-                              <span>
-                                {formatDate(
-                                  shipment?.updatedAt
-                                )}
-                              </span>
-                            </div>
+                          {/* CREATED DATE */}
+                          <td>
+                            {formatDate(shipment?.createdAt)}
+                          </td>
+
+                          {/* UPDATED DATE */}
+                          <td>
+                            {formatDate(shipment?.updatedAt)}
                           </td>
 
                           {/* ACTION */}
@@ -689,9 +602,7 @@ function ShipmentManagement() {
                               "Data unavailable" ? (
                               <Link
                                 className="manage-action"
-                                to={`/tracking?trackingNumber=${encodeURIComponent(
-                                  trackingNumber
-                                )}`}
+                                to={`/tracking?trackingNumber=${shipment.trackingNumber}`}
                               >
                                 Track Shipment
                                 <ArrowRight size={14} />
