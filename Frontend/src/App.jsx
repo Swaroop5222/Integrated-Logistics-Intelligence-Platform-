@@ -242,6 +242,31 @@ function App() {
           element={<SupportDashboard />}
         />
 
+        <Route
+          path="/support/shipments"
+          element={<SupportDashboard />}
+        />
+
+        <Route
+          path="/support/tracking"
+          element={<SupportDashboard />}
+        />
+
+        <Route
+          path="/support/notifications"
+          element={<SupportDashboard />}
+        />
+
+        <Route
+          path="/support/reports"
+          element={<SupportDashboard />}
+        />
+
+        <Route
+          path="/support/account"
+          element={<SupportDashboard />}
+        />
+
 
         {/* =================================================
             ADMINISTRATOR ROUTES

@@ -1,9 +1,9 @@
 package com.shiptrack;
-
+import com.shiptrack.repository.ProofOfDeliveryRepository;
+import com.shiptrack.repository.ForecastRepository;
 import com.shiptrack.dto.RegisterRequest;
 import com.shiptrack.dto.ShipmentRequest;
 import com.shiptrack.dto.ShipmentResponse;
-import com.shiptrack.entity.User;
 import com.shiptrack.enums.Role;
 import com.shiptrack.repository.ShipmentRepository;
 import com.shiptrack.repository.UserRepository;
@@ -19,13 +19,22 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.shiptrack.repository.RouteRepository;
+import com.shiptrack.repository.ShipmentLocationRepository;
+import com.shiptrack.repository.ShipmentStatusHistoryRepository;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 @Transactional
 class ShipmentTrackingSecurityTest {
+@Autowired
+private RouteRepository routeRepository;
 
+@Autowired
+private ShipmentLocationRepository shipmentLocationRepository;
+
+@Autowired
+private ShipmentStatusHistoryRepository shipmentStatusHistoryRepository;
     @Autowired
     private ShipmentService shipmentService;
 
@@ -41,32 +50,48 @@ class ShipmentTrackingSecurityTest {
     @Autowired
     private UserDetailsService userDetailsService;
 
-    private User ownerClient;
-    private User otherClient;
+    @Autowired
+private ProofOfDeliveryRepository proofOfDeliveryRepository;
 
-    @BeforeEach
-    void setUp() {
-        shipmentRepository.deleteAll();
-        userRepository.deleteAll();
+    @Autowired
+    private ForecastRepository forecastRepository;
 
-        RegisterRequest ownerReq = new RegisterRequest();
-        ownerReq.setFullName("Owner Business");
-        ownerReq.setEmail("owner-business@shiptrack.com");
-        ownerReq.setPassword("password123");
-        ownerReq.setRole(Role.BUSINESS_CLIENT);
-        ownerReq.setPhoneNumber("1111111111");
-        userService.registerUser(ownerReq);
-        ownerClient = userRepository.findByEmail("owner-business@shiptrack.com").orElseThrow();
+@BeforeEach
+void setUp() {
+    proofOfDeliveryRepository.deleteAll();
+    forecastRepository.deleteAll();
+    routeRepository.deleteAll();
+    shipmentStatusHistoryRepository.deleteAll();
+    shipmentLocationRepository.deleteAll();
+    shipmentRepository.deleteAll();
+    userRepository.deleteAll();
 
-        RegisterRequest otherReq = new RegisterRequest();
-        otherReq.setFullName("Other Business");
-        otherReq.setEmail("other-business@shiptrack.com");
-        otherReq.setPassword("password123");
-        otherReq.setRole(Role.BUSINESS_CLIENT);
-        otherReq.setPhoneNumber("2222222222");
-        userService.registerUser(otherReq);
-        otherClient = userRepository.findByEmail("other-business@shiptrack.com").orElseThrow();
-    }
+    RegisterRequest ownerReq = new RegisterRequest();
+    ownerReq.setFullName("Owner Business");
+    ownerReq.setEmail("owner-business@shiptrack.com");
+    ownerReq.setPassword("password123");
+    ownerReq.setRole(Role.BUSINESS_CLIENT);
+    ownerReq.setPhoneNumber("1111111111");
+
+    userService.registerUser(ownerReq);
+
+    userRepository
+            .findByEmail("owner-business@shiptrack.com")
+            .orElseThrow();
+
+    RegisterRequest otherReq = new RegisterRequest();
+    otherReq.setFullName("Other Business");
+    otherReq.setEmail("other-business@shiptrack.com");
+    otherReq.setPassword("password123");
+    otherReq.setRole(Role.BUSINESS_CLIENT);
+    otherReq.setPhoneNumber("2222222222");
+
+    userService.registerUser(otherReq);
+
+    userRepository
+            .findByEmail("other-business@shiptrack.com")
+            .orElseThrow();
+}
 
     private void authenticateAs(String email) {
         UserDetails userDetails = userDetailsService.loadUserByUsername(email);

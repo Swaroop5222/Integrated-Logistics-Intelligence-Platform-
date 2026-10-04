@@ -230,13 +230,18 @@
 
 .support-logout {
   min-height: 41px;
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
+  border: 0;
   border-radius: 10px;
   color: #64748b;
+  background: transparent;
   text-decoration: none;
+  text-align: left;
+  cursor: pointer;
   font-size: 10px;
 }
 
@@ -718,6 +723,11 @@
   background: rgba(34, 197, 94, 0.08);
 }
 
+.support-status.queued {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.09);
+}
+
 .shipment-state small {
   color: #475569;
   font-size: 7px;
@@ -837,6 +847,24 @@
   font-size: 7px;
 }
 
+.support-inline-action {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+}
+
+.support-inline-action:hover {
+  color: #fdba74;
+  background: rgba(249, 115, 22, 0.08);
+}
+
 /* =========================================
    EXCEPTIONS
 ========================================= */
@@ -856,7 +884,7 @@
 
 .exception-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   padding: 16px;
 }
@@ -916,6 +944,96 @@
 .exception-message svg {
   flex-shrink: 0;
   color: #fb923c;
+}
+
+.support-page-error {
+  margin-bottom: 17px;
+  padding: 12px 14px;
+  border: 1px solid rgba(244, 63, 94, 0.18);
+  border-radius: 10px;
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.06);
+  font-size: 9px;
+}
+
+.support-detail-content {
+  padding: 16px;
+}
+
+.support-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.support-detail-grid > div {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.3);
+}
+
+.support-detail-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 8px;
+}
+
+.support-detail-grid strong {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 6px;
+  color: #cbd5e1;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.support-history-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px;
+  margin-top: 17px;
+}
+
+.support-history-columns > div {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 11px;
+}
+
+.support-empty-inline {
+  padding: 18px;
+  color: #64748b;
+  font-size: 9px;
+}
+
+.support-report-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px;
+}
+
+.support-report-row {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 9px;
+  background: rgba(2, 6, 23, 0.3);
+}
+
+.support-report-row strong {
+  color: #f8fafc;
+  font-size: 15px;
+}
+
+.support-account-grid {
+  padding: 16px;
 }
 
 /* =========================================
@@ -1136,6 +1254,10 @@
     grid-template-columns: 1fr;
   }
 
+  .support-history-columns {
+    grid-template-columns: 1fr;
+  }
+
   .support-quick-actions {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1237,6 +1359,11 @@
   }
 
   .exception-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .support-detail-grid,
+  .support-report-list {
     grid-template-columns: 1fr;
   }
 

@@ -1,6 +1,8 @@
 package com.shiptrack.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -17,6 +19,7 @@ public class Route {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shipment_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Shipment shipment;
 
     @ManyToOne(fetch = FetchType.LAZY)

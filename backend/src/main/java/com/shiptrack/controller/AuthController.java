@@ -10,7 +10,6 @@ import com.shiptrack.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -36,7 +35,7 @@ public class AuthController {
     @PostMapping({"/api/auth/login", "/auth/login"})
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
         String email = request.getEmail();
-        Authentication authentication = authenticationManager.authenticate(
+        authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(email, request.getPassword())
         );
 

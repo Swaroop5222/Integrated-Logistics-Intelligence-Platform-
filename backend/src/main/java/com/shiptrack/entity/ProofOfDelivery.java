@@ -2,6 +2,8 @@ package com.shiptrack.entity;
 
 import com.shiptrack.enums.ShipmentStatus;
 import jakarta.persistence.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
@@ -20,6 +22,7 @@ public class ProofOfDelivery {
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "shipment_id", nullable = false, unique = true)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Shipment shipment;
 
     @Column(name = "receiver_name", nullable = false, length = 150)
