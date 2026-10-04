@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 function ShipmentDetailsPage({ shipment }) {
   const defaultShipment = {
     trackingNumber: 'TRK001',
@@ -58,6 +60,29 @@ function ShipmentDetailsPage({ shipment }) {
   }
 
   const currentShipment = shipment || defaultShipment
+
+  const [eta, setEta] = useState(null)
+  const [etaLoading, setEtaLoading] = useState(true)
+  const [etaError, setEtaError] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/deliveries/2')
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to fetch ETA')
+        }
+
+        return response.json()
+      })
+      .then((data) => {
+        setEta(data.estimatedDelivery)
+        setEtaLoading(false)
+      })
+      .catch(() => {
+        setEtaError(true)
+        setEtaLoading(false)
+      })
+  }, [])
 
   return (
     <div className="shipment-details-page">
@@ -225,6 +250,38 @@ function ShipmentDetailsPage({ shipment }) {
           <p className="address-text">
             {currentShipment.deliveryAddress}
           </p>
+
+        </section>
+
+        {/* Estimated Delivery */}
+        <section className="details-card eta-card">
+
+          <div className="card-title">
+            <span className="card-icon">⏱</span>
+            <h2>Estimated Delivery</h2>
+          </div>
+
+          <div className="eta-content">
+
+            {etaLoading && (
+              <p className="eta-message">
+                Loading estimated delivery time...
+              </p>
+            )}
+
+            {!etaLoading && etaError && (
+              <p className="eta-message">
+                Unable to load estimated delivery time.
+              </p>
+            )}
+
+            {!etaLoading && !etaError && eta && (
+              <p className="eta-value">
+                {new Date(eta).toLocaleString()}
+              </p>
+            )}
+
+          </div>
 
         </section>
 
