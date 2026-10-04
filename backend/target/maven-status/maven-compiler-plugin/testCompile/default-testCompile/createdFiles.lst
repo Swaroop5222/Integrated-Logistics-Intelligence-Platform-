@@ -1,0 +1,4 @@
+com\shiptrack\ShipmentServiceTest.class
+com\shiptrack\ShipmentTrackingSecurityTest.class
+com\shiptrack\BackendApplicationTests.class
+com\shiptrack\UserServiceRegisterIdTest.class
