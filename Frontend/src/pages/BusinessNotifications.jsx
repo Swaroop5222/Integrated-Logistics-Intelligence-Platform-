@@ -1,111 +1,79 @@
-import React, { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../api";
 import "./BusinessNotifications.css";
 
-const notificationsData = [
-  {
-    id: 1,
-    type: "delay",
-    title: "Shipment Delay Alert",
-    message:
-      "Shipment TRK-2026-103 is delayed due to traffic conditions on the Hyderabad–Bengaluru route.",
-    time: "10 minutes ago",
-    unread: true,
-  },
-  {
-    id: 2,
-    type: "delivery",
-    title: "Shipment Delivered",
-    message:
-      "Shipment TRK-2026-101 has been successfully delivered to the receiver.",
-    time: "1 hour ago",
-    unread: true,
-  },
-  {
-    id: 3,
-    type: "shipment",
-    title: "Shipment Created",
-    message:
-      "New shipment TRK-2026-105 has been successfully created and is ready for pickup.",
-    time: "2 hours ago",
-    unread: false,
-  },
-  {
-    id: 4,
-    type: "route",
-    title: "Route Update",
-    message:
-      "The Mumbai–Pune route has been updated. Estimated transit time has changed.",
-    time: "4 hours ago",
-    unread: false,
-  },
-  {
-    id: 5,
-    type: "performance",
-    title: "Delivery Performance Update",
-    message:
-      "Your monthly on-time delivery rate is currently 92.6%.",
-    time: "Yesterday",
-    unread: false,
-  },
-  {
-    id: 6,
-    type: "system",
-    title: "System Notification",
-    message:
-      "Shipment tracking services are operating normally.",
-    time: "Yesterday",
-    unread: false,
-  },
-];
-
 function BusinessNotifications() {
-  const [filter, setFilter] = useState("all");
-  const [notifications, setNotifications] = useState(notificationsData);
+  const [user, setUser] = useState(null);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filteredNotifications = useMemo(() => {
-    if (filter === "unread") {
-      return notifications.filter((item) => item.unread);
+  useEffect(() => {
+    let active = true;
+
+    async function loadActivities() {
+      try {
+        const [currentUser, shipments] = await Promise.all([
+          apiRequest("/api/users/me"),
+          apiRequest("/api/shipments"),
+        ]);
+        if (!active) return;
+
+        setUser(currentUser);
+        const shipmentList = Array.isArray(shipments) ? shipments : [];
+        const histories = await Promise.all(
+          shipmentList
+            .filter((shipment) => shipment?.id)
+            .map(async (shipment) => {
+              const result = await apiRequest(
+                `/api/shipments/${shipment.id}/history`
+              );
+              return (Array.isArray(result) ? result : []).map((event) => ({
+                ...event,
+                trackingNumber: shipment.trackingNumber,
+              }));
+            })
+        );
+        if (!active) return;
+
+        setActivities(
+          histories
+            .flat()
+            .sort((a, b) =>
+              new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+            )
+        );
+      } catch (loadError) {
+        console.error("Failed to load shipment activity:", loadError);
+        if (active) {
+          setActivities([]);
+          setError(loadError.message || "Unable to load shipment activity.");
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
     }
 
-    return notifications;
-  }, [filter, notifications]);
-
-  const unreadCount = notifications.filter((item) => item.unread).length;
-
-  const markAsRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, unread: false } : item
-      )
-    );
-  };
-
-  const markAllAsRead = () => {
-    setNotifications((prev) =>
-      prev.map((item) => ({
-        ...item,
-        unread: false,
-      }))
-    );
-  };
+    loadActivities();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const getIcon = (type) => {
     switch (type) {
-      case "delay":
-        return "⚠";
-      case "delivery":
+      case "DELIVERED":
         return "✓";
-      case "shipment":
-        return "📦";
-      case "route":
+      case "IN_TRANSIT":
         return "↗";
-      case "performance":
-        return "◈";
       default:
-        return "●";
+        return "▣";
     }
   };
+
+  const userName =
+    user?.fullName || user?.name || user?.email || "Business Client";
 
   return (
     <div className="business-notifications-page">
@@ -215,12 +183,6 @@ function BusinessNotifications() {
           >
             <span>♢</span>
             Notifications
-
-            {unreadCount > 0 && (
-              <span className="nav-notification-count">
-                {unreadCount}
-              </span>
-            )}
           </Link>
 
         </nav>
@@ -228,11 +190,13 @@ function BusinessNotifications() {
         <div className="business-sidebar-bottom">
 
           <div className="business-user-card">
-            <div className="business-avatar">BC</div>
+            <div className="business-avatar">
+              {userName.charAt(0).toUpperCase()}
+            </div>
 
             <div>
-              <strong>Business Client</strong>
-              <span>Premium Account</span>
+              <strong>{userName}</strong>
+              <span>Business Client</span>
             </div>
           </div>
 
@@ -258,7 +222,7 @@ function BusinessNotifications() {
             <h1>Notifications</h1>
 
             <p>
-              Stay updated with shipment activity, delays and logistics events.
+              Shipment status activity recorded by the backend.
             </p>
           </div>
 
@@ -273,61 +237,6 @@ function BusinessNotifications() {
 
         </header>
 
-        {/* SUMMARY */}
-        <section className="notification-summary">
-
-          <div className="notification-summary-card">
-            <span className="summary-icon">♢</span>
-
-            <div>
-              <span>Total Notifications</span>
-              <strong>{notifications.length}</strong>
-            </div>
-          </div>
-
-          <div className="notification-summary-card unread-summary">
-            <span className="summary-icon">●</span>
-
-            <div>
-              <span>Unread</span>
-              <strong>{unreadCount}</strong>
-            </div>
-          </div>
-
-          <div className="notification-summary-card">
-            <span className="summary-icon">⚠</span>
-
-            <div>
-              <span>Alerts</span>
-              <strong>
-                {
-                  notifications.filter(
-                    (item) => item.type === "delay"
-                  ).length
-                }
-              </strong>
-            </div>
-          </div>
-
-          <div className="notification-summary-card">
-            <span className="summary-icon">✓</span>
-
-            <div>
-              <span>Updates</span>
-              <strong>
-                {
-                  notifications.filter(
-                    (item) =>
-                      item.type === "delivery" ||
-                      item.type === "shipment"
-                  ).length
-                }
-              </strong>
-            </div>
-          </div>
-
-        </section>
-
         {/* NOTIFICATION PANEL */}
         <section className="notifications-panel">
 
@@ -336,85 +245,59 @@ function BusinessNotifications() {
             <div>
               <h2>Recent Notifications</h2>
               <p>
-                Latest updates from your logistics operations
+                Shipment status history for your shipments
               </p>
             </div>
-
-            <button
-              className="mark-all-btn"
-              onClick={markAllAsRead}
-            >
-              ✓ Mark all as read
-            </button>
-
-          </div>
-
-          {/* FILTERS */}
-          <div className="notification-filters">
-
-            <button
-              className={filter === "all" ? "filter-btn active" : "filter-btn"}
-              onClick={() => setFilter("all")}
-            >
-              All
-            </button>
-
-            <button
-              className={
-                filter === "unread"
-                  ? "filter-btn active"
-                  : "filter-btn"
-              }
-              onClick={() => setFilter("unread")}
-            >
-              Unread
-              {unreadCount > 0 && (
-                <span>{unreadCount}</span>
-              )}
-            </button>
 
           </div>
 
           {/* LIST */}
           <div className="notifications-list">
 
-            {filteredNotifications.length > 0 ? (
-              filteredNotifications.map((notification) => (
+            {error ? (
+              <div className="empty-notifications" role="alert">
+                <h3>Unable to load shipment activity</h3>
+                <p>{error}</p>
+              </div>
+            ) : loading ? (
+              <div className="empty-notifications">
+                <p>Loading shipment activity...</p>
+              </div>
+            ) : activities.length > 0 ? (
+              activities.map((activity) => (
 
                 <div
-                  key={notification.id}
-                  className={
-                    notification.unread
-                      ? "notification-item unread"
-                      : "notification-item"
-                  }
-                  onClick={() => markAsRead(notification.id)}
+                  key={`${activity.shipmentId}-${activity.id}`}
+                  className="notification-item"
                 >
 
                   <div
-                    className={`notification-icon ${notification.type}`}
+                    className={`notification-icon ${String(activity.status || "").toLowerCase()}`}
                   >
-                    {getIcon(notification.type)}
+                    {getIcon(activity.status)}
                   </div>
 
                   <div className="notification-content">
 
                     <div className="notification-title-row">
 
-                      <h3>{notification.title}</h3>
-
-                      {notification.unread && (
-                        <span className="new-badge">
-                          NEW
-                        </span>
-                      )}
+                      <h3>
+                        {String(activity.status || "Shipment activity")
+                          .replaceAll("_", " ")}
+                      </h3>
 
                     </div>
 
-                    <p>{notification.message}</p>
+                    <p>
+                      {activity.remarks}
+                      {activity.remarks && activity.trackingNumber ? " · " : ""}
+                      {activity.trackingNumber}
+                    </p>
 
                     <span className="notification-time">
-                      {notification.time}
+                      {activity.createdAt
+                        ? new Date(activity.createdAt).toLocaleString()
+                        : ""}
                     </span>
 
                   </div>
@@ -434,65 +317,15 @@ function BusinessNotifications() {
                   ✓
                 </div>
 
-                <h3>You're all caught up</h3>
+                <h3>No shipment activity recorded</h3>
 
                 <p>
-                  There are no unread notifications right now.
+                  Status events will appear here when recorded for your shipments.
                 </p>
 
               </div>
 
             )}
-
-          </div>
-
-        </section>
-
-        {/* NOTIFICATION INFO */}
-        <section className="notification-info-grid">
-
-          <div className="info-card">
-
-            <div className="info-card-icon">
-              ⚡
-            </div>
-
-            <div>
-              <h3>Real-time Updates</h3>
-              <p>
-                Important shipment and delivery events will appear here.
-              </p>
-            </div>
-
-          </div>
-
-          <div className="info-card">
-
-            <div className="info-card-icon">
-              ⚠
-            </div>
-
-            <div>
-              <h3>Delay Alerts</h3>
-              <p>
-                Stay informed about shipment delays and route disruptions.
-              </p>
-            </div>
-
-          </div>
-
-          <div className="info-card">
-
-            <div className="info-card-icon">
-              ✓
-            </div>
-
-            <div>
-              <h3>Delivery Updates</h3>
-              <p>
-                Receive updates when shipments reach important milestones.
-              </p>
-            </div>
 
           </div>
 

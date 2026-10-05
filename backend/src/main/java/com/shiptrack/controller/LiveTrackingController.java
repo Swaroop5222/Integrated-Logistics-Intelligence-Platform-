@@ -30,7 +30,11 @@ public class LiveTrackingController {
 
     @GetMapping("/{id}/location")
     public ResponseEntity<ShipmentLocationResponse> getCurrentLocation(@PathVariable Long id) {
-        return ResponseEntity.ok(liveTrackingService.getCurrentLocation(id));
+        ShipmentLocationResponse location =
+                liveTrackingService.getCurrentLocation(id);
+        return location == null
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.ok(location);
     }
 
     @GetMapping("/{id}/location-history")

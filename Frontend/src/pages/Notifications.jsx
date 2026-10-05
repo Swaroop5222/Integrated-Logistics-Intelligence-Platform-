@@ -359,11 +359,16 @@ function Notifications() {
     setShipmentHistories,
   ] = useState({});
 
+  const [backendNotifications, setBackendNotifications] =
+    useState([]);
+
   const [loading, setLoading] =
     useState(true);
 
   const [error, setError] =
     useState("");
+  const [markingRead, setMarkingRead] =
+    useState(false);
 
   /* =======================================================
      LOAD DATA
@@ -377,12 +382,16 @@ function Notifications() {
         const [
           userResponse,
           shipmentResponse,
+          notificationResponse,
         ] = await Promise.all([
           apiRequest(
             "/api/users/me"
           ),
           apiRequest(
             "/api/shipments"
+          ),
+          apiRequest(
+            "/api/notifications"
           ),
         ]);
 
@@ -394,6 +403,11 @@ function Notifications() {
         setUser(userResponse);
         setShipments(
           actualShipments
+        );
+        setBackendNotifications(
+          Array.isArray(notificationResponse)
+            ? notificationResponse
+            : []
         );
 
         const historyResults =
@@ -469,6 +483,7 @@ function Notifications() {
         setUser(null);
         setShipments([]);
         setShipmentHistories({});
+        setBackendNotifications([]);
       } finally {
         setLoading(false);
       }
@@ -570,7 +585,28 @@ function Notifications() {
           allNotifications
         );
 
-      return uniqueNotifications.sort(
+      const persistedByShipmentAndTime = new Map(
+        backendNotifications.map((notification) => [
+          `${notification.shipmentId}|${new Date(
+            notification.createdAt || 0
+          ).getTime()}`,
+          notification,
+        ])
+      );
+
+      return uniqueNotifications.map((notification) => {
+        const timestamp = notification.time
+          ? new Date(notification.time).getTime()
+          : 0;
+        const persisted = persistedByShipmentAndTime.get(
+          `${notification.shipmentId}|${timestamp}`
+        );
+
+        return {
+          ...notification,
+          read: persisted?.read ?? false,
+        };
+      }).sort(
         (a, b) => {
           const dateA =
             new Date(
@@ -588,6 +624,7 @@ function Notifications() {
     }, [
       shipments,
       shipmentHistories,
+      backendNotifications,
     ]);
 
   /* =======================================================
@@ -601,15 +638,27 @@ function Notifications() {
      READ STATUS
      ======================================================= */
 
-  const handleMarkAllRead =
-    () => {
-      /*
-       * The current backend does not
-       * provide a notification read/unread
-       * API, so no fake state is changed.
-       */
-      return;
-    };
+  const unreadCount = notifications.filter(
+    (notification) => !notification.read
+  ).length;
+
+  const handleMarkAllRead = async () => {
+    setMarkingRead(true);
+    try {
+      await apiRequest("/api/notifications/read-all", {
+        method: "PATCH",
+      });
+      await loadNotifications();
+    } catch (readError) {
+      console.error("Unable to mark notifications as read:", readError);
+      setError(
+        readError.message ||
+          "Unable to update notification read status."
+      );
+    } finally {
+      setMarkingRead(false);
+    }
+  };
 
   /* =======================================================
      LOADING
@@ -814,9 +863,8 @@ function Notifications() {
             </h2>
 
             <p>
-              Notification read status is
-              not available from the current
-              backend API.
+              {unreadCount} unread{" "}
+              {unreadCount === 1 ? "update" : "updates"}.
             </p>
 
           </div>
@@ -827,9 +875,9 @@ function Notifications() {
             onClick={
               handleMarkAllRead
             }
-            title="Read status is not supported by the current backend"
+            disabled={markingRead || unreadCount === 0}
           >
-            Mark all as read
+            {markingRead ? "Marking as read..." : "Mark all as read"}
           </button>
 
         </section>
@@ -914,6 +962,11 @@ function Notifications() {
                       notification.id
                     }
                     className="notification-item"
+                    aria-label={
+                      notification.read
+                        ? "Read notification"
+                        : "Unread notification"
+                    }
                   >
 
                     <div

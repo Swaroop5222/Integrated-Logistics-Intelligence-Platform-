@@ -57,24 +57,30 @@ const formatDate = (value) => {
   });
 };
 
+const formatDateTime = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? ""
+    : date.toLocaleString("en-GB");
+};
+
 const getCustomerName = (shipment) =>
-  shipment?.customerName ||
-  shipment?.businessClientName ||
-  shipment?.receiverName ||
-  "Customer";
+  shipment?.customerName || "Not assigned";
 
 const getRoute = (shipment) => {
-  const sender =
-    shipment?.senderAddress || "Pickup";
-
-  const receiver =
-    shipment?.receiverAddress || "Destination";
-
-  return `${sender} → ${receiver}`;
+  return [shipment?.senderAddress, shipment?.receiverAddress]
+    .filter(Boolean)
+    .join(" → ");
 };
 
 function BusinessShipmentHistory() {
   const [shipments, setShipments] = useState([]);
+  const [podRecords, setPodRecords] = useState([]);
   const [user, setUser] = useState(null);
 
   const [search, setSearch] = useState("");
@@ -82,6 +88,7 @@ function BusinessShipmentHistory() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [podError, setPodError] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -140,6 +147,37 @@ function BusinessShipmentHistory() {
           });
 
         setShipments(historicalShipments);
+        const deliveredShipments = historicalShipments.filter(
+          (shipment) => normalizeStatus(shipment.status) === "DELIVERED"
+        );
+        const podResults = await Promise.allSettled(
+          deliveredShipments
+            .filter((shipment) => shipment.id)
+            .map((shipment) =>
+              apiRequest(`/api/shipments/${shipment.id}/pod`)
+            )
+        );
+        if (mounted) {
+          const failedPodRequests = podResults.filter(
+            (result) =>
+              result.status === "rejected" &&
+              result.reason?.status !== 404
+          );
+          setPodRecords(
+            podResults
+              .filter((result) => result.status === "fulfilled" && result.value)
+              .map((result) => result.value)
+          );
+          if (failedPodRequests.length > 0) {
+            console.error(
+              "Failed to load proof of delivery records:",
+              failedPodRequests.map((result) => result.reason)
+            );
+            setPodError(
+              "Some proof of delivery records could not be loaded."
+            );
+          }
+        }
       } catch (err) {
         console.error(
           "Failed to load shipment history:",
@@ -463,6 +501,7 @@ function BusinessShipmentHistory() {
             SUMMARY
             ===================================== */}
 
+        {!error && (
         <section className="business-history-summary">
 
           <div className="history-summary-card">
@@ -538,6 +577,7 @@ function BusinessShipmentHistory() {
           </div>
 
         </section>
+        )}
 
         {/* =====================================
             HISTORY PANEL
@@ -643,7 +683,13 @@ function BusinessShipmentHistory() {
 
               <tbody>
 
-                {loading ? (
+                {error ? (
+                  <tr>
+                    <td colSpan="7" role="alert">
+                      {error}
+                    </td>
+                  </tr>
+                ) : loading ? (
 
                   <tr>
 
@@ -809,6 +855,7 @@ function BusinessShipmentHistory() {
 
           {/* FOOTER */}
 
+          {!error && !loading && (
           <div className="history-footer">
 
             <span>
@@ -819,35 +866,76 @@ function BusinessShipmentHistory() {
               historical shipments
             </span>
 
-            <div className="history-pages">
-
-              <button type="button">
-                ‹
-              </button>
-
-              <button
-                type="button"
-                className="selected"
-              >
-                1
-              </button>
-
-              <button type="button">
-                2
-              </button>
-
-              <button type="button">
-                3
-              </button>
-
-              <button type="button">
-                ›
-              </button>
-
-            </div>
-
           </div>
+          )}
 
+        </section>
+
+        <section className="business-history-panel">
+          <div className="business-history-panel-header">
+            <div>
+              <span>DELIVERY CONFIRMATION</span>
+              <h2>Proof of Delivery</h2>
+            </div>
+          </div>
+          <div className="history-table-wrapper">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>SHIPMENT</th>
+                  <th>RECEIVER</th>
+                  <th>DELIVERED AT</th>
+                  <th>REMARKS</th>
+                  <th>SIGNATURE</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {podRecords.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan="6"
+                      role={error || podError ? "alert" : undefined}
+                    >
+                      {error || podError
+                        ? error || podError
+                        : loading
+                        ? "Loading proof of delivery..."
+                        : "No proof of delivery records available."}
+                    </td>
+                  </tr>
+                ) : (
+                  <>
+                    {podError && (
+                      <tr>
+                        <td colSpan="6" role="alert">{podError}</td>
+                      </tr>
+                    )}
+                    {podRecords.map((pod) => (
+                      <tr key={pod.id}>
+                        <td>{pod.trackingNumber || pod.shipmentId}</td>
+                        <td>{pod.receiverName || ""}</td>
+                        <td>{formatDateTime(pod.deliveredAt)}</td>
+                        <td>{pod.remarks || ""}</td>
+                        <td>
+                          {pod.signature?.startsWith("data:image/") ? (
+                            <img
+                              src={pod.signature}
+                              alt={`Signature for ${pod.receiverName || pod.trackingNumber}`}
+                              style={{ maxWidth: "120px", maxHeight: "48px" }}
+                            />
+                          ) : (
+                            pod.signature || ""
+                          )}
+                        </td>
+                        <td>{getStatusLabel(pod.deliveryStatus)}</td>
+                      </tr>
+                    ))}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         {/* FOOTER */}

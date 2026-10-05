@@ -73,10 +73,12 @@ function OperatorLiveDelivery() {
 
             return [shipment.id, location];
           } catch (error) {
-            console.error(
-              `Location unavailable for shipment ${shipment.id}:`,
-              error
-            );
+            if (error?.status !== 404) {
+              console.error(
+                `Failed to load location for shipment ${shipment.id}:`,
+                error
+              );
+            }
 
             return [shipment.id, null];
           }

@@ -31,6 +31,18 @@ function getStatus(shipment) {
   return String(shipment?.status || "").toUpperCase();
 }
 
+function formatDuration(minutes) {
+  if (minutes < 60) {
+    return `${Math.round(minutes)} min`;
+  }
+
+  if (minutes < 1440) {
+    return `${(minutes / 60).toFixed(1)} hrs`;
+  }
+
+  return `${(minutes / 1440).toFixed(1)} days`;
+}
+
 function getUserName(user) {
   return (
     user?.name ||
@@ -67,6 +79,8 @@ function getUserInitials(user) {
 function TrackingInsights() {
   const [user, setUser] = useState(null);
   const [shipments, setShipments] = useState([]);
+  const [shipmentPerformance, setShipmentPerformance] =
+    useState({});
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -122,7 +136,50 @@ function TrackingInsights() {
           return;
         }
 
-        setShipments(normalizeArray(data));
+        const shipmentList = normalizeArray(data);
+        setShipments(shipmentList);
+
+        const deliveredShipments = shipmentList.filter(
+          (shipment) => getStatus(shipment) === "DELIVERED"
+        );
+        const performanceResults = await Promise.allSettled(
+          deliveredShipments.map(async (shipment) => {
+            const [history, forecasts] = await Promise.all([
+              apiRequest(
+                `/api/shipments/${shipment.id}/history`
+              ),
+              apiRequest(
+                `/api/forecasts/shipment/${shipment.id}`
+              ),
+            ]);
+
+            return [
+              shipment.id,
+              {
+                history: normalizeArray(history),
+                forecasts: normalizeArray(forecasts),
+              },
+            ];
+          })
+        );
+
+        if (!active) {
+          return;
+        }
+
+        const performance = {};
+        performanceResults.forEach((result, index) => {
+          if (result.status === "fulfilled") {
+            const [shipmentId, data] = result.value;
+            performance[shipmentId] = data;
+          } else {
+            console.error(
+              `Failed to load delivery analytics for shipment ${deliveredShipments[index].id}:`,
+              result.reason
+            );
+          }
+        });
+        setShipmentPerformance(performance);
       } catch (err) {
         console.error(
           "Failed to load shipments:",
@@ -212,35 +269,162 @@ function TrackingInsights() {
     });
   }, [shipments]);
 
-  /* =========================
-     BACKEND DATA AVAILABILITY
-  ========================= */
+  const deliveryRecords = useMemo(
+    () =>
+      shipments
+        .filter((shipment) => getStatus(shipment) === "DELIVERED")
+        .map((shipment) => {
+          const performance =
+            shipmentPerformance[shipment.id] || {};
+          const history = performance.history || [];
+          const deliveredEvent = history.find(
+            (event) => getStatus(event) === "DELIVERED"
+          );
+          const createdEvent = history.find(
+            (event) => getStatus(event) === "CREATED"
+          );
+          const deliveredTime = new Date(
+            deliveredEvent?.createdAt || shipment.updatedAt
+          ).getTime();
+          const createdTime = new Date(
+            createdEvent?.createdAt || shipment.createdAt
+          ).getTime();
+          const forecasts = (performance.forecasts || [])
+            .filter((forecast) => {
+              const forecastCreatedAt = forecast.createdAt
+                ? new Date(forecast.createdAt).getTime()
+                : Number.NaN;
+              const predictedTime = new Date(
+                forecast.predictedDeliveryTime || ""
+              ).getTime();
 
-  /*
-   * The current backend does not provide:
-   *
-   * - expected delivery time
-   * - actual delivery duration
-   * - monthly historical on-time percentage
-   * - Express vs Standard performance
-   *
-   * Therefore these values are NOT fabricated.
-   */
+              return (
+                Number.isFinite(deliveredTime) &&
+                Number.isFinite(forecastCreatedAt) &&
+                Number.isFinite(predictedTime) &&
+                forecastCreatedAt <= deliveredTime
+              );
+            })
+            .sort(
+              (left, right) =>
+                new Date(right.createdAt).getTime() -
+                new Date(left.createdAt).getTime()
+            );
 
+          return {
+            shipment,
+            deliveredAt: Number.isFinite(deliveredTime)
+              ? deliveredTime
+              : null,
+            duration:
+              Number.isFinite(createdTime) &&
+              Number.isFinite(deliveredTime) &&
+              deliveredTime >= createdTime
+                ? deliveredTime - createdTime
+                : null,
+            forecast: forecasts[0] || null,
+          };
+        }),
+    [shipments, shipmentPerformance]
+  );
+
+  const forecastedDeliveries = useMemo(
+    () => deliveryRecords.filter((record) => record.forecast),
+    [deliveryRecords]
+  );
+  const onTimeCount = forecastedDeliveries.filter(
+    (record) =>
+      record.deliveredAt <=
+      new Date(record.forecast.predictedDeliveryTime).getTime()
+  ).length;
   const onTimeDelivery =
-    "Data unavailable";
+    forecastedDeliveries.length > 0
+      ? `${(
+          (onTimeCount / forecastedDeliveries.length) *
+          100
+        ).toFixed(1)}%`
+      : "—";
 
+  const deliveryDurations = deliveryRecords
+    .map((record) => record.duration)
+    .filter((duration) => duration !== null);
   const averageDeliveryTime =
-    "Data unavailable";
+    deliveryDurations.length > 0
+      ? formatDuration(
+          deliveryDurations.reduce(
+            (total, duration) => total + duration,
+            0
+          ) /
+            deliveryDurations.length /
+            60000
+        )
+      : "—";
 
-  const monthlyTrend = [
-    { month: "Apr", value: null },
-    { month: "May", value: null },
-    { month: "Jun", value: null },
-    { month: "Jul", value: null },
-    { month: "Aug", value: null },
-    { month: "Sep", value: null },
-  ];
+  const monthlyTrend = useMemo(() => {
+    const now = new Date();
+    const months = [];
+
+    for (let offset = 5; offset >= 0; offset -= 1) {
+      const monthDate = new Date(
+        now.getFullYear(),
+        now.getMonth() - offset,
+        1
+      );
+      const monthRecords = forecastedDeliveries.filter(
+        (record) => {
+          if (record.deliveredAt === null) return false;
+          const deliveredDate = new Date(record.deliveredAt);
+
+          return (
+            deliveredDate.getFullYear() ===
+              monthDate.getFullYear() &&
+            deliveredDate.getMonth() === monthDate.getMonth()
+          );
+        }
+      );
+      const monthOnTime = monthRecords.filter(
+        (record) =>
+          record.deliveredAt <=
+          new Date(record.forecast.predictedDeliveryTime).getTime()
+      ).length;
+
+      months.push({
+        month: monthDate.toLocaleDateString("en-US", {
+          month: "short",
+        }),
+        value:
+          monthRecords.length > 0
+            ? (monthOnTime / monthRecords.length) * 100
+            : null,
+      });
+    }
+
+    return months;
+  }, [forecastedDeliveries]);
+
+  const packageMix = useMemo(() => {
+    const counts = new Map();
+
+    deliveryRecords.forEach(({ shipment }) => {
+      const description =
+        shipment.packageDescription ||
+        shipment.packageType ||
+        shipment.packageCategory ||
+        shipment.category;
+
+      if (description) {
+        counts.set(
+          description,
+          (counts.get(description) || 0) + 1
+        );
+      }
+    });
+
+    return Array.from(counts.entries()).map(
+      ([description, count]) =>
+        `${description} (${count})`
+    );
+  }, [deliveryRecords]);
 
   return (
     <div className="insights-page">
@@ -412,7 +596,9 @@ function TrackingInsights() {
             </strong>
 
             <small>
-              Based on delivered shipments
+              {loading
+                ? "Loading delivery history"
+                : `${onTimeCount} of ${forecastedDeliveries.length} deliveries with a saved forecast`}
             </small>
 
           </div>
@@ -426,12 +612,11 @@ function TrackingInsights() {
             </span>
 
             <strong>
-              {averageDeliveryTime}
+              {loading ? "..." : averageDeliveryTime}
             </strong>
 
             <small>
-              Backend does not provide
-              delivery duration
+              Average creation-to-delivery time
             </small>
 
           </div>
@@ -571,9 +756,9 @@ function TrackingInsights() {
                 fontSize: "11px",
               }}
             >
-              Historical monthly delivery
-              performance is not available
-              from the current backend.
+              {forecastedDeliveries.length > 0
+                ? `${forecastedDeliveries.length} deliveries with a saved pre-delivery forecast`
+                : "No completed deliveries with a saved pre-delivery forecast in this period."}
             </p>
 
           </section>
@@ -682,19 +867,16 @@ function TrackingInsights() {
 
           <div className="insight-highlight">
 
-            <span>
-              DELIVERY PERFORMANCE
-            </span>
+            <span>PACKAGE MIX</span>
 
             <h2>
-              Performance insights unavailable.
+              Completed shipment packages
             </h2>
 
             <p>
-              The current backend does not
-              provide shipment-type performance
-              data required to compare Express
-              and Standard delivery performance.
+              {packageMix.length > 0
+                ? packageMix.join(" · ")
+                : "Package descriptions will appear here after your first delivery."}
             </p>
 
             <Link to="/shipments/history">

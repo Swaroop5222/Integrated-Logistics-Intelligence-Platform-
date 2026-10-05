@@ -32,29 +32,23 @@ function getStatus(shipment) {
 }
 
 function getTrackingNumber(shipment) {
-  return shipment?.trackingNumber || "Data unavailable";
+  return shipment?.trackingNumber || "";
 }
 
 function getCustomerName(shipment) {
-  return shipment?.receiverName || "Data unavailable";
+  return shipment?.receiverName || "";
 }
 
 function getCustomerPhone(shipment) {
-  return shipment?.receiverPhone || "Data unavailable";
+  return shipment?.receiverPhone || "";
 }
 
 function getOrigin(shipment) {
-  const senderName = shipment?.senderName || "Data unavailable";
-  const senderAddress = shipment?.senderAddress || "Data unavailable";
-
-  return `${senderName} · ${senderAddress}`;
+  return [shipment?.senderName, shipment?.senderAddress].filter(Boolean).join(" · ");
 }
 
 function getDestination(shipment) {
-  const receiverName = shipment?.receiverName || "Data unavailable";
-  const receiverAddress = shipment?.receiverAddress || "Data unavailable";
-
-  return `${receiverName} · ${receiverAddress}`;
+  return [shipment?.receiverName, shipment?.receiverAddress].filter(Boolean).join(" · ");
 }
 
 function getStatusClass(status) {
@@ -87,13 +81,13 @@ function formatStatus(status) {
 
 function formatDate(value) {
   if (!value) {
-    return "Data unavailable";
+    return "";
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Data unavailable";
+    return "";
   }
 
   return date.toLocaleDateString("en-IN", {
@@ -124,6 +118,7 @@ function ShipmentManagement() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
 
   async function loadData() {
     try {
@@ -154,6 +149,21 @@ function ShipmentManagement() {
   useEffect(() => {
     loadData();
   }, []);
+
+  async function handleCancel(shipmentId) {
+    if (!window.confirm("Cancel this shipment?")) return;
+
+    try {
+      setActionError("");
+      await apiRequest(`/api/shipments/${shipmentId}/cancel`, {
+        method: "PATCH",
+      });
+      await loadData();
+    } catch (err) {
+      console.error("Failed to cancel shipment:", err);
+      setActionError(err.message || "Unable to cancel this shipment.");
+    }
+  }
 
   /*
    * Only shipments that are actually active according
@@ -221,7 +231,7 @@ function ShipmentManagement() {
     user?.fullName ||
     user?.username ||
     user?.email ||
-    "Customer";
+    "Business Client";
 
   const initials = getInitials(userName);
 
@@ -247,13 +257,11 @@ function ShipmentManagement() {
           </div>
         </div>
 
-        <div className="management-menu-title">
-          CUSTOMER PORTAL
-        </div>
+        <div className="management-menu-title">BUSINESS CLIENT</div>
 
         <nav className="management-navigation">
           <Link
-            to="/dashboard/customer"
+            to="/dashboard/business"
             className="management-nav-link"
           >
             <span>⌂</span>
@@ -261,15 +269,15 @@ function ShipmentManagement() {
           </Link>
 
           <Link
-            to="/shipments/active"
+            to="/business/shipment-management"
             className="management-nav-link active"
           >
             <span>▣</span>
-            Active Shipments
+            Shipment Management
           </Link>
 
           <Link
-            to="/shipments/history"
+            to="/business/shipment-history"
             className="management-nav-link"
           >
             <span>◷</span>
@@ -277,7 +285,7 @@ function ShipmentManagement() {
           </Link>
 
           <Link
-            to="/tracking"
+            to="/business/tracking"
             className="management-nav-link"
           >
             <span>⌖</span>
@@ -289,15 +297,15 @@ function ShipmentManagement() {
             className="management-nav-link"
           >
             <span>◉</span>
-            Notifications
+            Tracking
           </Link>
 
           <Link
-            to="/tracking-insights"
+            to="/business/reports"
             className="management-nav-link"
           >
             <span>◈</span>
-            Tracking Insights
+            Reports & Export
           </Link>
         </nav>
 
@@ -318,16 +326,15 @@ function ShipmentManagement() {
         <header className="management-header">
           <div>
             <div className="management-breadcrumb">
-              Customer Portal
+              Business Client
               <span>/</span>
               Shipment Management
             </div>
 
-            <h1>Active Shipments</h1>
+            <h1>Shipment Management</h1>
 
             <p>
-              Monitor all your shipments that are currently in
-              progress.
+              View and manage active shipments.
             </p>
           </div>
 
@@ -338,12 +345,13 @@ function ShipmentManagement() {
 
             <div>
               <strong>{userName}</strong>
-              <span>Customer</span>
+              <span>Business Client</span>
             </div>
           </div>
         </header>
 
         {/* SUMMARY */}
+        {!loading && !error && (
         <section className="management-summary">
           <div className="summary-card">
             <Package size={20} />
@@ -381,6 +389,7 @@ function ShipmentManagement() {
             </div>
           </div>
         </section>
+        )}
 
         {/* SHIPMENT PANEL */}
         <section className="management-panel">
@@ -391,6 +400,8 @@ function ShipmentManagement() {
               <p>
                 {loading
                   ? "Loading shipment data..."
+                  : error
+                    ? ""
                   : `${filteredShipments.length} active shipment${
                       filteredShipments.length === 1
                         ? ""
@@ -459,6 +470,11 @@ function ShipmentManagement() {
               >
                 Try Again
               </button>
+            </div>
+          )}
+          {actionError && (
+            <div className="no-results" role="alert">
+              <p>{actionError}</p>
             </div>
           )}
 
@@ -530,8 +546,7 @@ function ShipmentManagement() {
 
                           {/* REFERENCE / ORDER ID */}
                           <td>
-                            {shipment?.referenceId ||
-                              "Data unavailable"}
+                            {shipment?.referenceId || ""}
                           </td>
 
                           {/* SENDER */}
@@ -541,8 +556,7 @@ function ShipmentManagement() {
 
                           {/* SENDER PHONE */}
                           <td>
-                            {shipment?.senderPhone ||
-                              "Data unavailable"}
+                            {shipment?.senderPhone || ""}
                           </td>
 
                           {/* RECEIVER */}
@@ -557,15 +571,14 @@ function ShipmentManagement() {
 
                           {/* PACKAGE */}
                           <td>
-                            {shipment?.packageDescription ||
-                              "Data unavailable"}
+                            {shipment?.packageDescription || ""}
                           </td>
 
                           {/* WEIGHT */}
                           <td>
                             {shipment?.packageWeightKg != null
-                              ? shipment.packageWeightKg
-                              : "Data unavailable"}
+                              ? `${shipment.packageWeightKg} kg`
+                              : ""}
                           </td>
 
                           {/* STATUS */}
@@ -582,8 +595,7 @@ function ShipmentManagement() {
 
                           {/* ASSIGNED LOGISTICS OPERATOR */}
                           <td>
-                            {shipment?.assignedOperatorName ||
-                              "Data unavailable"}
+                            {shipment?.assignedOperatorName || ""}
                           </td>
 
                           {/* CREATED DATE */}
@@ -598,19 +610,31 @@ function ShipmentManagement() {
 
                           {/* ACTION */}
                           <td>
-                            {trackingNumber !==
-                              "Data unavailable" ? (
+                            {trackingNumber ? (
                               <Link
                                 className="manage-action"
-                                to={`/tracking?trackingNumber=${shipment.trackingNumber}`}
+                                to={`/business/tracking?trackingNumber=${encodeURIComponent(trackingNumber)}`}
                               >
                                 Track Shipment
                                 <ArrowRight size={14} />
                               </Link>
-                            ) : (
-                              <span>
-                                Data unavailable
-                              </span>
+                            ) : null}
+                            {shipment?.id && (
+                              <>
+                                <Link
+                                  className="manage-action"
+                                  to={`/business/create-shipment?edit=${shipment.id}`}
+                                >
+                                  Edit
+                                </Link>
+                                <button
+                                  type="button"
+                                  className="manage-action"
+                                  onClick={() => handleCancel(shipment.id)}
+                                >
+                                  Cancel
+                                </button>
+                              </>
                             )}
                           </td>
                         </tr>
@@ -637,9 +661,6 @@ function ShipmentManagement() {
                 active shipments
               </span>
 
-              <div className="pagination">
-                <span>Page 1</span>
-              </div>
             </div>
           )}
         </section>

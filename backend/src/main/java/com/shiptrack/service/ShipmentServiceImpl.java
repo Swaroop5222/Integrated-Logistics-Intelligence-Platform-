@@ -28,13 +28,16 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final ShipmentRepository shipmentRepository;
     private final ShipmentStatusHistoryRepository historyRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     public ShipmentServiceImpl(ShipmentRepository shipmentRepository,
                                ShipmentStatusHistoryRepository historyRepository,
-                               UserRepository userRepository) {
+                               UserRepository userRepository,
+                               NotificationService notificationService) {
         this.shipmentRepository = shipmentRepository;
         this.historyRepository = historyRepository;
         this.userRepository = userRepository;
+        this.notificationService = notificationService;
     }
 
     private User getCurrentUser() {
@@ -136,6 +139,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         history.setRemarks("Shipment created successfully.");
         history.setUpdatedBy(currentUser);
         historyRepository.save(history);
+        notificationService.notifyStatusChange(
+                savedShipment, ShipmentStatus.CREATED, history.getCreatedAt());
 
         return mapToResponse(savedShipment);
     }
@@ -261,6 +266,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         history.setRemarks(request.getRemarks() != null ? request.getRemarks() : "Status updated to " + request.getStatus());
         history.setUpdatedBy(currentUser);
         historyRepository.save(history);
+        notificationService.notifyStatusChange(
+                savedShipment, request.getStatus(), history.getCreatedAt());
 
         return mapToResponse(savedShipment);
     }
@@ -289,6 +296,8 @@ public class ShipmentServiceImpl implements ShipmentService {
         history.setRemarks("Shipment cancelled.");
         history.setUpdatedBy(currentUser);
         historyRepository.save(history);
+        notificationService.notifyStatusChange(
+                savedShipment, ShipmentStatus.CANCELLED, history.getCreatedAt());
 
         return mapToResponse(savedShipment);
     }

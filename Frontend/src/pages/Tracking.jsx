@@ -83,6 +83,7 @@ function getDestination(shipment) {
 
 function getPackageType(shipment) {
   return (
+    shipment?.packageDescription ||
     shipment?.packageType ||
     shipment?.packageCategory ||
     shipment?.category ||
@@ -93,6 +94,7 @@ function getPackageType(shipment) {
 
 function getWeight(shipment) {
   const weight =
+    shipment?.packageWeightKg ??
     shipment?.weight ??
     shipment?.packageWeight ??
     shipment?.weightKg;
@@ -121,7 +123,9 @@ function getPriority(shipment) {
   return (
     shipment?.priority ||
     shipment?.deliveryPriority ||
-    "Data unavailable"
+    (shipment?.assignedOperatorName
+      ? "Assigned operator"
+      : "Operator assignment unavailable")
   );
 }
 
@@ -173,6 +177,10 @@ function getLocationName(locationData) {
     current?.location_name ||
     locationData?.locationName ||
     locationData?.location_name ||
+    (Number.isFinite(Number(current?.latitude)) &&
+    Number.isFinite(Number(current?.longitude))
+      ? `${Number(current.latitude).toFixed(5)}, ${Number(current.longitude).toFixed(5)}`
+      : null) ||
     "Data unavailable"
   );
 }

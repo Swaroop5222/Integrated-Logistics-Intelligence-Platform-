@@ -49,6 +49,7 @@ function getTo(shipment) {
 
 function getType(shipment) {
   return (
+    shipment?.packageDescription ||
     shipment?.packageType ||
     shipment?.packageCategory ||
     shipment?.category ||
@@ -80,6 +81,18 @@ function formatDate(value) {
     day: "2-digit",
     year: "numeric",
   });
+}
+
+function formatDuration(minutes) {
+  if (minutes < 60) {
+    return `${Math.round(minutes)} min`;
+  }
+
+  if (minutes < 1440) {
+    return `${(minutes / 60).toFixed(1)} hrs`;
+  }
+
+  return `${(minutes / 1440).toFixed(1)} days`;
 }
 
 /* =========================
@@ -128,6 +141,7 @@ function getUserRole(user) {
 function ShipmentHistory() {
   const [user, setUser] = useState(null);
   const [shipments, setShipments] = useState([]);
+  const [shipmentHistories, setShipmentHistories] = useState({});
   const [filter, setFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -160,6 +174,32 @@ function ShipmentHistory() {
             )
           );
 
+        const historyResults = await Promise.allSettled(
+          historyShipments.map((shipment) =>
+            apiRequest(
+              `/api/shipments/${shipment.id}/history`
+            )
+          )
+        );
+
+        if (!active) return;
+
+        const histories = {};
+        historyResults.forEach((result, index) => {
+          const shipment = historyShipments[index];
+
+          if (result.status === "fulfilled") {
+            histories[shipment.id] =
+              normalizeShipments(result.value);
+          } else {
+            console.error(
+              `Failed to load status history for shipment ${shipment.id}:`,
+              result.reason
+            );
+          }
+        });
+
+        setShipmentHistories(histories);
         setShipments(historyShipments);
       } catch (err) {
         if (!active) return;
@@ -201,6 +241,44 @@ function ShipmentHistory() {
     (shipment) =>
       getStatus(shipment) === "DELIVERED"
   ).length;
+
+  const deliveryDurations = shipments.flatMap((shipment) => {
+    if (getStatus(shipment) !== "DELIVERED") {
+      return [];
+    }
+
+    const history = shipmentHistories[shipment.id] || [];
+    const createdEvent = history.find(
+      (event) => getStatus(event) === "CREATED"
+    );
+    const deliveredEvent = history.find(
+      (event) => getStatus(event) === "DELIVERED"
+    );
+    const createdAt = new Date(
+      createdEvent?.createdAt || shipment.createdAt
+    ).getTime();
+    const deliveredAt = new Date(
+      deliveredEvent?.createdAt || shipment.updatedAt
+    ).getTime();
+
+    return Number.isFinite(createdAt) &&
+      Number.isFinite(deliveredAt) &&
+      deliveredAt >= createdAt
+      ? [deliveredAt - createdAt]
+      : [];
+  });
+
+  const averageDeliveryTime =
+    deliveryDurations.length > 0
+      ? formatDuration(
+          deliveryDurations.reduce(
+            (total, duration) => total + duration,
+            0
+          ) /
+            deliveryDurations.length /
+            60000
+        )
+      : "—";
 
   const successRate =
     totalShipments > 0
@@ -369,11 +447,11 @@ function ShipmentHistory() {
             <span>Avg. Delivery</span>
 
             <strong>
-              Data unavailable
+              {loading ? "..." : averageDeliveryTime}
             </strong>
 
             <small>
-              Backend does not provide delivery duration
+              Average time from creation to delivery
             </small>
           </div>
         </section>
@@ -490,9 +568,16 @@ function ShipmentHistory() {
                           <td>
                             {status === "DELIVERED"
                               ? formatDate(
-                                  shipment.updatedAt
+                                  shipmentHistories[
+                                    shipment.id
+                                  ]?.find(
+                                    (event) =>
+                                      getStatus(event) ===
+                                      "DELIVERED"
+                                  )?.createdAt ||
+                                    shipment.updatedAt
                                 )
-                              : "Data unavailable"}
+                              : "—"}
                           </td>
 
                           <td>

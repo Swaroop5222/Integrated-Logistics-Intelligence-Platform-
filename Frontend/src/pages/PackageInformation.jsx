@@ -10,8 +10,6 @@ function PackageInformation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("ALL");
-  const [categoryFilter, setCategoryFilter] = useState("ALL");
 
   useEffect(() => {
     loadPackageData();
@@ -45,145 +43,8 @@ function PackageInformation() {
     }
   };
 
-  /*
-   * Backend field names can differ depending on the DTO/entity mapping.
-   * These helpers read the available backend value without creating
-   * dummy package information.
-   */
-  const getValue = (shipment, fields) => {
-    for (const field of fields) {
-      const value = shipment?.[field];
-
-      if (
-        value !== undefined &&
-        value !== null &&
-        value !== ""
-      ) {
-        return value;
-      }
-    }
-
-    return null;
-  };
-
-  const getPackageType = (shipment) =>
-    getValue(shipment, [
-      "packageType",
-      "type",
-      "package_type",
-    ]);
-
-  const getQuantity = (shipment) =>
-    getValue(shipment, [
-      "quantity",
-      "packageQuantity",
-      "numberOfPackages",
-      "numberOfItems",
-      "packageCount",
-    ]);
-
-  const getWeight = (shipment) =>
-    getValue(shipment, [
-      "weight",
-      "packageWeight",
-      "weightKg",
-      "packageWeightKg",
-    ]);
-
-  const getDimensions = (shipment) => {
-    const directValue = getValue(shipment, [
-      "dimensions",
-      "dimension",
-      "packageDimensions",
-    ]);
-
-    if (directValue) {
-      if (typeof directValue === "object") {
-        const length = directValue.length ?? directValue.l;
-        const width = directValue.width ?? directValue.w;
-        const height = directValue.height ?? directValue.h;
-
-        if (length && width && height) {
-          return `${length} × ${width} × ${height} cm`;
-        }
-      }
-
-      return String(directValue);
-    }
-
-    const length = getValue(shipment, [
-      "length",
-      "packageLength",
-      "lengthCm",
-    ]);
-
-    const width = getValue(shipment, [
-      "width",
-      "packageWidth",
-      "widthCm",
-    ]);
-
-    const height = getValue(shipment, [
-      "height",
-      "packageHeight",
-      "heightCm",
-    ]);
-
-    if (length && width && height) {
-      return `${length} × ${width} × ${height} cm`;
-    }
-
-    return null;
-  };
-
-  const getCategory = (shipment) =>
-    getValue(shipment, [
-      "category",
-      "packageCategory",
-      "package_category",
-      "productCategory",
-    ]);
-
-  const getDeclaredValue = (shipment) =>
-    getValue(shipment, [
-      "declaredValue",
-      "packageValue",
-      "declaredAmount",
-      "value",
-    ]);
-
-  const formatWeight = (value) => {
-    if (value === null || value === undefined) {
-      return "Data unavailable";
-    }
-
-    if (typeof value === "number") {
-      return `${value} kg`;
-    }
-
-    const text = String(value);
-
-    if (/kg|g$/i.test(text.trim())) {
-      return text;
-    }
-
-    return `${text} kg`;
-  };
-
-  const formatValue = (value) => {
-    if (value === null || value === undefined) {
-      return "Data unavailable";
-    }
-
-    if (typeof value === "number") {
-      return `₹${value.toLocaleString("en-IN")}`;
-    }
-
-    return String(value);
-  };
-
   const formatStatus = (status) => {
-    if (!status) return "Data unavailable";
+    if (!status) return "";
 
     return String(status)
       .replace(/_/g, " ")
@@ -202,7 +63,6 @@ function PackageInformation() {
         return "picked-up";
 
       case "FAILED_DELIVERY":
-      case "DELAYED":
         return "delayed";
 
       default:
@@ -211,53 +71,11 @@ function PackageInformation() {
   };
 
   const packageRecords = useMemo(() => {
-    return shipments.map((shipment) => ({
-      ...shipment,
-
-      packageId:
-        getValue(shipment, [
-          "packageId",
-          "packageID",
-          "packageNumber",
-        ]) || `PKG-${String(shipment.id).padStart(3, "0")}`,
-
-      trackingId:
-        getValue(shipment, [
-          "trackingNumber",
-          "trackingId",
-        ]) || "Data unavailable",
-
-      type: getPackageType(shipment),
-      quantity: getQuantity(shipment),
-      weight: getWeight(shipment),
-      dimensions: getDimensions(shipment),
-      category: getCategory(shipment),
-      declaredValue: getDeclaredValue(shipment),
-
-      status:
-        getValue(shipment, ["status"]) || "Data unavailable",
-    }));
+    return shipments.filter((shipment) =>
+      shipment?.trackingNumber || shipment?.packageDescription ||
+      shipment?.packageWeightKg != null
+    );
   }, [shipments]);
-
-  const packageTypes = useMemo(() => {
-    return [
-      ...new Set(
-        packageRecords
-          .map((item) => item.type)
-          .filter(Boolean)
-      ),
-    ];
-  }, [packageRecords]);
-
-  const categories = useMemo(() => {
-    return [
-      ...new Set(
-        packageRecords
-          .map((item) => item.category)
-          .filter(Boolean)
-      ),
-    ];
-  }, [packageRecords]);
 
   const filteredPackages = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -265,93 +83,11 @@ function PackageInformation() {
     return packageRecords.filter((item) => {
       const matchesSearch =
         !query ||
-        String(item.packageId).toLowerCase().includes(query) ||
-        String(item.trackingId).toLowerCase().includes(query) ||
-        String(item.type || "").toLowerCase().includes(query) ||
-        String(item.category || "").toLowerCase().includes(query);
-
-      const matchesType =
-        typeFilter === "ALL" ||
-        String(item.type || "") === typeFilter;
-
-      const matchesCategory =
-        categoryFilter === "ALL" ||
-        String(item.category || "") === categoryFilter;
-
-      return (
-        matchesSearch &&
-        matchesType &&
-        matchesCategory
-      );
+        String(item.trackingNumber || "").toLowerCase().includes(query) ||
+        String(item.packageDescription || "").toLowerCase().includes(query);
+      return matchesSearch;
     });
-  }, [
-    packageRecords,
-    search,
-    typeFilter,
-    categoryFilter,
-  ]);
-
-  const totalPackages = packageRecords.length;
-
-  const totalWeight = useMemo(() => {
-    const weights = packageRecords
-      .map((item) => item.weight)
-      .filter(
-        (value) =>
-          value !== null &&
-          value !== undefined &&
-          value !== ""
-      )
-      .map((value) => {
-        const number = parseFloat(
-          String(value).replace(/,/g, "")
-        );
-
-        return Number.isFinite(number) ? number : null;
-      })
-      .filter((value) => value !== null);
-
-    if (!weights.length) {
-      return "Data unavailable";
-    }
-
-    const total = weights.reduce(
-      (sum, value) => sum + value,
-      0
-    );
-
-    if (total >= 1000) {
-      return `${(total / 1000).toFixed(1)}T`;
-    }
-
-    return `${total.toFixed(1)} kg`;
-  }, [packageRecords]);
-
-  const electronicsCount = packageRecords.filter(
-    (item) =>
-      String(item.category || "").toLowerCase() ===
-        "electronics" ||
-      String(item.category || "")
-        .toLowerCase()
-        .includes("electronics")
-  ).length;
-
-  const highValueCount = packageRecords.filter((item) => {
-    if (
-      item.declaredValue === null ||
-      item.declaredValue === undefined
-    ) {
-      return false;
-    }
-
-    const value = parseFloat(
-      String(item.declaredValue)
-        .replace(/₹/g, "")
-        .replace(/,/g, "")
-    );
-
-    return Number.isFinite(value) && value >= 50000;
-  }).length;
+  }, [packageRecords, search]);
 
   const displayName =
     user?.name ||
@@ -498,8 +234,7 @@ function PackageInformation() {
             <h1>Package Information</h1>
 
             <p>
-              View package dimensions, weight, category and
-              shipment details.
+              View package description and weight returned with your shipments.
             </p>
           </div>
 
@@ -518,58 +253,6 @@ function PackageInformation() {
         </header>
 
         {/* SUMMARY */}
-        <section className="package-summary">
-
-          <div className="package-summary-card">
-            <span>Total Packages</span>
-
-            <strong>
-              {loading ? "..." : totalPackages}
-            </strong>
-
-            <small>
-              Across all shipments
-            </small>
-          </div>
-
-          <div className="package-summary-card">
-            <span>Total Weight</span>
-
-            <strong>
-              {loading ? "..." : totalWeight}
-            </strong>
-
-            <small>
-              Current shipment volume
-            </small>
-          </div>
-
-          <div className="package-summary-card">
-            <span>Electronics</span>
-
-            <strong>
-              {loading ? "..." : electronicsCount}
-            </strong>
-
-            <small>
-              Package category
-            </small>
-          </div>
-
-          <div className="package-summary-card">
-            <span>High Value</span>
-
-            <strong>
-              {loading ? "..." : highValueCount}
-            </strong>
-
-            <small>
-              Based on declared value
-            </small>
-          </div>
-
-        </section>
-
         {/* PACKAGE DATABASE */}
         <section className="package-panel">
 
@@ -606,45 +289,6 @@ function PackageInformation() {
               />
             </div>
 
-            <select
-              className="package-filter"
-              value={typeFilter}
-              onChange={(event) =>
-                setTypeFilter(event.target.value)
-              }
-            >
-              <option value="ALL">
-                All Package Types
-              </option>
-
-              {packageTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="package-filter"
-              value={categoryFilter}
-              onChange={(event) =>
-                setCategoryFilter(event.target.value)
-              }
-            >
-              <option value="ALL">
-                All Categories
-              </option>
-
-              {categories.map((category) => (
-                <option
-                  key={category}
-                  value={category}
-                >
-                  {category}
-                </option>
-              ))}
-            </select>
-
           </div>
 
           {/* TABLE */}
@@ -654,14 +298,9 @@ function PackageInformation() {
 
               <thead>
                 <tr>
-                  <th>PACKAGE ID</th>
                   <th>TRACKING ID</th>
-                  <th>TYPE</th>
-                  <th>QUANTITY</th>
+                  <th>PACKAGE DESCRIPTION</th>
                   <th>WEIGHT</th>
-                  <th>DIMENSIONS</th>
-                  <th>CATEGORY</th>
-                  <th>VALUE</th>
                   <th>STATUS</th>
                 </tr>
               </thead>
@@ -670,7 +309,7 @@ function PackageInformation() {
 
                 {loading && (
                   <tr>
-                    <td colSpan="9">
+                    <td colSpan="4">
                       Loading package information...
                     </td>
                   </tr>
@@ -678,7 +317,7 @@ function PackageInformation() {
 
                 {!loading && error && (
                   <tr>
-                    <td colSpan="9">
+                    <td colSpan="4">
                       {error}
                     </td>
                   </tr>
@@ -688,7 +327,7 @@ function PackageInformation() {
                   !error &&
                   filteredPackages.length === 0 && (
                     <tr>
-                      <td colSpan="9">
+                      <td colSpan="4">
                         No package records found.
                       </td>
                     </tr>
@@ -707,53 +346,19 @@ function PackageInformation() {
                       <tr key={packageItem.id}>
 
                         <td>
-                          <strong>
-                            {packageItem.packageId}
-                          </strong>
-                        </td>
-
-                        <td>
                           <span className="tracking-id">
-                            {packageItem.trackingId}
+                            {packageItem.trackingNumber}
                           </span>
                         </td>
 
                         <td>
-                          <span className="package-type">
-                            {packageItem.type ||
-                              "Data unavailable"}
-                          </span>
+                          {packageItem.packageDescription || ""}
                         </td>
 
                         <td>
-                          {packageItem.quantity ??
-                            "Data unavailable"}
-                        </td>
-
-                        <td>
-                          <span className="weight">
-                            {formatWeight(
-                              packageItem.weight
-                            )}
-                          </span>
-                        </td>
-
-                        <td>
-                          {packageItem.dimensions ||
-                            "Data unavailable"}
-                        </td>
-
-                        <td>
-                          <span className="category">
-                            {packageItem.category ||
-                              "Data unavailable"}
-                          </span>
-                        </td>
-
-                        <td>
-                          {formatValue(
-                            packageItem.declaredValue
-                          )}
+                          {packageItem.packageWeightKg != null
+                            ? `${packageItem.packageWeightKg} kg`
+                            : ""}
                         </td>
 
                         <td>
@@ -778,6 +383,7 @@ function PackageInformation() {
           </div>
 
           {/* TABLE FOOTER */}
+          {!loading && !error && (
           <div className="package-table-footer">
 
             <span>
@@ -788,36 +394,8 @@ function PackageInformation() {
               packages
             </span>
 
-            <div className="package-pagination">
-              <button type="button">
-                ‹
-              </button>
-
-              <button
-                type="button"
-                className="selected"
-              >
-                1
-              </button>
-
-              <button type="button">
-                2
-              </button>
-
-              <button type="button">
-                3
-              </button>
-
-              <button type="button">
-                …
-              </button>
-
-              <button type="button">
-                ›
-              </button>
-            </div>
-
           </div>
+          )}
 
         </section>
 
@@ -832,4 +410,3 @@ function PackageInformation() {
 }
 
 export default PackageInformation;
-

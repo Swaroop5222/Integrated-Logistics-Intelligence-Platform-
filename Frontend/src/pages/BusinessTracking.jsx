@@ -3,6 +3,26 @@ import { Link, useSearchParams } from "react-router-dom";
 import "./BusinessTracking.css";
 import { apiRequest } from "../api";
 
+const TERMINAL_STATUSES = [
+  "DELIVERED",
+  "CANCELLED",
+  "FAILED_DELIVERY",
+];
+
+function formatHours(value) {
+  const hours = Number(value);
+  return Number.isFinite(hours)
+    ? `${hours.toFixed(2)} hours`
+    : "Data unavailable";
+}
+
+function formatConfidence(value) {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return "";
+  const percent = confidence <= 1 ? confidence * 100 : confidence;
+  return ` (${Math.round(percent)}% confidence)`;
+}
+
 function BusinessTracking() {
   const [searchParams] = useSearchParams();
 
@@ -11,7 +31,9 @@ function BusinessTracking() {
   const [trackingNumber, setTrackingNumber] = useState(initialTracking);
   const [searchedTracking, setSearchedTracking] = useState(initialTracking);
   const [liveShipment, setLiveShipment] = useState(null);
-  // "idle" -> nothing searched yet, "loading", "found", "notfound"
+  const [user, setUser] = useState(null);
+  const [searchError, setSearchError] = useState("");
+  const [trackingWarning, setTrackingWarning] = useState("");
   const [trackingState, setTrackingState] = useState(
     initialTracking ? "loading" : "idle"
   );
@@ -19,13 +41,34 @@ function BusinessTracking() {
   useEffect(() => {
     let active = true;
 
+    apiRequest("/api/users/me")
+      .then((data) => {
+        if (active) setUser(data);
+      })
+      .catch((error) => {
+        console.error("Failed to load business profile:", error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
     async function fetchLiveShipment() {
       if (!searchedTracking.trim()) {
         setTrackingState("idle");
+        setLiveShipment(null);
+        setSearchError("");
+        setTrackingWarning("");
         return;
       }
 
       setTrackingState("loading");
+      setSearchError("");
+      setTrackingWarning("");
 
       try {
         const data = await apiRequest(
@@ -34,75 +77,151 @@ function BusinessTracking() {
 
         if (!active) return;
 
-        // Pull the real status history for this shipment instead of
-        // fabricating timeline events from just createdAt/updatedAt.
-        let historyEvents = [];
-        try {
-          const history = await apiRequest(
-            `/api/shipments/${data.id}/history`
-          );
-          historyEvents = (history || [])
-            .slice()
-            .reverse()
-            .map((h, index) => ({
-              date: h.createdAt ? new Date(h.createdAt).toLocaleDateString() : "",
-              time: h.createdAt ? new Date(h.createdAt).toLocaleTimeString() : "",
-              title: `Status: ${String(h.status || "").replaceAll("_", " ")}`,
-              location:
-                h.remarks ||
-                (h.updatedByName ? `Updated by ${h.updatedByName}` : "Logistics Network"),
-              active: index === 0,
-            }));
-        } catch {
-          // If history can't be fetched (e.g. not visible to this user),
-          // fall back to nothing rather than inventing events.
-          historyEvents = [];
-        }
+        const shipmentId = data.id;
+        const optionalRequests = await Promise.allSettled([
+          apiRequest(`/api/shipments/${shipmentId}/history`),
+          apiRequest(`/api/shipments/${shipmentId}/location`),
+          apiRequest(`/api/shipments/${shipmentId}/location-history`),
+          apiRequest(`/api/shipments/${shipmentId}/tracking`),
+          apiRequest(`/api/routes/shipment/${shipmentId}`),
+          apiRequest(`/api/forecasts/shipment/${shipmentId}`),
+        ]);
 
         if (!active) return;
 
-        const statusStr = String(data.status || "CREATED").replaceAll("_", " ");
-        const progressVal =
-          data.status === "DELIVERED"
-            ? 100
-            : data.status === "OUT_FOR_DELIVERY"
-            ? 85
-            : data.status === "IN_TRANSIT"
-            ? 60
-            : data.status === "PICKED_UP"
-            ? 35
-            : data.status === "CANCELLED"
-            ? 0
-            : 15;
+        const failedOptionalRequests = optionalRequests.filter(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.status !== 404
+        );
+        if (failedOptionalRequests.length > 0) {
+          console.error(
+            "Failed to load optional tracking details:",
+            failedOptionalRequests.map((result) => result.reason)
+          );
+        }
+
+        const [historyResult, locationResult, locationHistoryResult,
+          trackingResult, routeResult, forecastResult] = optionalRequests;
+        const history = historyResult.status === "fulfilled" &&
+          Array.isArray(historyResult.value) ? historyResult.value : [];
+        const location = locationResult.status === "fulfilled"
+          ? locationResult.value : null;
+        const locationHistory = locationHistoryResult.status === "fulfilled" &&
+          Array.isArray(locationHistoryResult.value) ? locationHistoryResult.value : [];
+        const tracking = trackingResult.status === "fulfilled"
+          ? trackingResult.value : null;
+        let route = routeResult.status === "fulfilled"
+          ? routeResult.value : null;
+        let routeFailed = false;
+        if (!route && routeResult.status === "rejected" &&
+            routeResult.reason?.status === 404) {
+          try {
+            route = await apiRequest(
+              `/api/routes/shipment/${shipmentId}/calculate`,
+              { method: "POST" }
+            );
+          } catch (routeError) {
+            routeFailed = true;
+            console.error("Failed to calculate shipment route:", routeError);
+          }
+        }
+
+        let forecasts = forecastResult.status === "fulfilled" &&
+          Array.isArray(forecastResult.value) ? forecastResult.value : [];
+        let forecastFailed = false;
+        if (forecasts.length === 0) {
+          try {
+            const forecast = await apiRequest(
+              `/api/forecasts/generate?shipmentId=${shipmentId}`,
+              { method: "POST" }
+            );
+            if (forecast) forecasts = [forecast];
+          } catch (forecastError) {
+            forecastFailed = true;
+            console.error("Failed to generate shipment forecast:", forecastError);
+          }
+        }
+
+        const etaResult = route?.destinationLatitude != null &&
+          route?.destinationLongitude != null &&
+          !TERMINAL_STATUSES.includes(data.status)
+          ? await Promise.allSettled([
+              apiRequest(`/api/shipments/${shipmentId}/eta`, {
+                method: "POST",
+                body: JSON.stringify({
+                  destination: {
+                    latitude: route.destinationLatitude,
+                    longitude: route.destinationLongitude,
+                  },
+                }),
+              }),
+            ])
+          : [];
+
+        const eta = etaResult[0]?.status === "fulfilled"
+          ? etaResult[0].value : null;
+        const etaFailed = etaResult[0]?.status === "rejected";
+        if (etaFailed) {
+          console.error(
+            "Failed to load shipment ETA:",
+            etaResult[0].reason
+          );
+        }
+        if (
+          failedOptionalRequests.length > 0 ||
+          routeFailed ||
+          forecastFailed ||
+          etaFailed
+        ) {
+          setTrackingWarning(
+            "Some tracking details could not be loaded."
+          );
+        }
+        const currentLocation = location ||
+          tracking?.currentLocation ||
+          null;
+        const events = [
+          ...history.map((item) => ({
+            at: item.createdAt,
+            title: item.status
+              ? `Status: ${String(item.status).replaceAll("_", " ")}`
+              : null,
+            detail: item.remarks || item.updatedByName,
+          })),
+          ...locationHistory.map((item) => ({
+            at: item.recordedAt,
+            title: item.locationName,
+            detail: item.recordedByOperatorName,
+          })),
+        ]
+          .filter((event) => event.title || event.detail)
+          .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+          .map((event, index) => ({
+            ...event,
+            date: event.at ? new Date(event.at).toLocaleDateString() : "",
+            time: event.at ? new Date(event.at).toLocaleTimeString() : "",
+            active: index === 0,
+          }));
 
         setLiveShipment({
-          order: data.referenceId || `SHIP-${data.id}`,
-          customer: data.customerName || data.receiverName || "Client Customer",
-          origin: data.senderAddress || "Origin",
-          destination: data.receiverAddress || "Destination",
-          currentLocation:
-            data.status === "DELIVERED"
-              ? data.receiverAddress
-              : data.status === "CANCELLED"
-              ? "Cancelled"
-              : "In Transit / Hub",
-          status: statusStr,
-          progress: progressVal,
-          eta: data.updatedAt ? new Date(data.updatedAt).toLocaleDateString() : "Pending",
-          pickup: data.createdAt ? new Date(data.createdAt).toLocaleDateString() : "Pending",
-          weight: `${data.packageWeightKg || 1} kg`,
-          packageType: data.packageDescription || "Box",
-          quantity: 1,
-          driver: data.assignedOperatorName || "Operations Logistics",
-          vehicle: "Fleet Transport",
-          mode: "Road Transport",
-          events: historyEvents,
+          ...data,
+          currentLocation,
+          locationHistory,
+          route,
+          eta,
+          forecasts,
+          events,
         });
         setTrackingState("found");
       } catch {
         if (active) {
           setLiveShipment(null);
           setTrackingState("notfound");
+          setTrackingWarning("");
+          setSearchError(
+            "Shipment could not be loaded. It may not exist or you may not have permission to view it."
+          );
         }
       }
     }
@@ -115,13 +234,20 @@ function BusinessTracking() {
   }, [searchedTracking]);
 
   const shipment = liveShipment;
+  const userName =
+    user?.fullName || user?.name || user?.email || "Business Client";
 
   const handleSearch = (e) => {
     e.preventDefault();
 
     const value = trackingNumber.trim().toUpperCase();
 
-    if (!value) return;
+    if (!value) {
+      setSearchError("Enter a tracking number.");
+      setTrackingState("idle");
+      setLiveShipment(null);
+      return;
+    }
 
     setSearchedTracking(value);
   };
@@ -268,21 +394,18 @@ function BusinessTracking() {
 
             <h1>Shipment Tracking</h1>
 
-            <p>
-              Track shipment location, delivery progress and
-              estimated arrival.
-            </p>
+            <p>Track shipment status and backend-reported location.</p>
           </div>
 
           <div className="business-user">
 
             <div className="user-avatar">
-              B
+              {userName.charAt(0).toUpperCase()}
             </div>
 
             <div>
-              <strong>Business Client</strong>
-              <span>Account</span>
+              <strong>{userName}</strong>
+              <span>Business Client</span>
             </div>
 
           </div>
@@ -323,7 +446,7 @@ function BusinessTracking() {
               onChange={(e) =>
                 setTrackingNumber(e.target.value)
               }
-              placeholder="Enter tracking ID e.g. STP-2026-00001"
+              placeholder="Enter tracking ID"
             />
 
             <button type="submit">
@@ -331,6 +454,16 @@ function BusinessTracking() {
             </button>
 
           </form>
+          {searchError && (
+            <p role="alert" className="tracking-error">
+              {searchError}
+            </p>
+          )}
+          {trackingWarning && (
+            <p role="alert" className="tracking-error">
+              {trackingWarning}
+            </p>
+          )}
 
         </section>
 
@@ -390,9 +523,9 @@ function BusinessTracking() {
 
               <h2>{searchedTracking}</h2>
 
-              <p>
-                Order ID: {shipment.order}
-              </p>
+              {shipment.referenceId && (
+                <p>Reference: {shipment.referenceId}</p>
+              )}
 
             </div>
 
@@ -404,7 +537,10 @@ function BusinessTracking() {
               }`}
             >
               <span className="status-dot"></span>
-              {shipment.status}
+              {String(shipment.status || "")
+                .replaceAll("_", " ")
+                .toLowerCase()
+                .replace(/\b\w/g, (letter) => letter.toUpperCase())}
             </div>
 
           </div>
@@ -412,6 +548,8 @@ function BusinessTracking() {
 
           {/* ROUTE */}
 
+          {(shipment.senderAddress || shipment.route?.origin ||
+            shipment.receiverAddress || shipment.route?.destination) && (
           <div className="shipment-route">
 
             <div className="route-location">
@@ -422,27 +560,13 @@ function BusinessTracking() {
 
               <div>
                 <span>ORIGIN</span>
-                <strong>{shipment.origin}</strong>
+                <strong>{shipment.route?.origin || shipment.senderAddress}</strong>
               </div>
 
             </div>
 
 
-            <div className="route-line">
-
-              <div className="route-progress">
-                <span
-                  style={{
-                    width: `${shipment.progress}%`,
-                  }}
-                ></span>
-              </div>
-
-              <div className="truck-marker">
-                🚚
-              </div>
-
-            </div>
+            <div className="route-line"></div>
 
 
             <div className="route-location destination">
@@ -453,33 +577,35 @@ function BusinessTracking() {
 
               <div>
                 <span>DESTINATION</span>
-                <strong>{shipment.destination}</strong>
+                <strong>{shipment.route?.destination || shipment.receiverAddress}</strong>
               </div>
 
             </div>
 
           </div>
+          )}
 
 
           {/* CURRENT LOCATION */}
 
+          {shipment.currentLocation && (
           <div className="current-location">
 
             <div className="live-indicator">
               <span></span>
-              LIVE
+              LATEST
             </div>
 
             <div>
               <span>Current Location</span>
-              <strong>{shipment.currentLocation}</strong>
-            </div>
-
-            <div className="progress-value">
-              {shipment.progress}% complete
+              <strong>
+                {shipment.currentLocation.locationName ||
+                  `${shipment.currentLocation.latitude}, ${shipment.currentLocation.longitude}`}
+              </strong>
             </div>
 
           </div>
+          )}
 
         </section>
 
@@ -488,14 +614,18 @@ function BusinessTracking() {
             STAT CARDS
         ========================================== */}
 
+        {(shipment.eta?.expectedCompletionTime ||
+          shipment.forecasts.length ||
+          shipment.packageWeightKg != null) && (
         <section className="tracking-stats">
 
+          {shipment.eta?.expectedCompletionTime && (
           <div className="tracking-stat-card orange">
 
             <span>Estimated Delivery</span>
 
             <strong>
-              {shipment.eta}
+              {new Date(shipment.eta.expectedCompletionTime).toLocaleString()}
             </strong>
 
             <small>
@@ -503,53 +633,18 @@ function BusinessTracking() {
             </small>
 
           </div>
+          )}
 
-
-          <div className="tracking-stat-card purple">
-
-            <span>Pickup Date</span>
-
-            <strong>
-              {shipment.pickup}
-            </strong>
-
-            <small>
-              Shipment collected
-            </small>
-
-          </div>
-
-
-          <div className="tracking-stat-card green">
-
-            <span>Transport Mode</span>
-
-            <strong>
-              {shipment.mode}
-            </strong>
-
-            <small>
-              Current delivery mode
-            </small>
-
-          </div>
-
-
+          {shipment.packageWeightKg != null && (
           <div className="tracking-stat-card pink">
-
             <span>Package Weight</span>
-
             <strong>
-              {shipment.weight}
+              {shipment.packageWeightKg} kg
             </strong>
-
-            <small>
-              {shipment.quantity} package(s)
-            </small>
-
           </div>
-
+          )}
         </section>
+        )}
 
 
         {/* ==========================================
@@ -605,11 +700,11 @@ function BusinessTracking() {
                       {event.date} · {event.time}
                     </div>
 
-                    <h3>{event.title}</h3>
+                    <h3>{event.title || event.detail}</h3>
 
-                    <p>
-                      {event.location}
-                    </p>
+                    {event.title && event.detail && (
+                      <p>{event.detail}</p>
+                    )}
 
                   </div>
 
@@ -645,52 +740,60 @@ function BusinessTracking() {
 
               <div className="detail-row">
                 <span>Customer</span>
-                <strong>
-                  {shipment.customer}
-                </strong>
+                <strong>{shipment.customerName || "Not assigned"}</strong>
               </div>
 
-              <div className="detail-row">
+              {shipment.packageDescription && <div className="detail-row">
                 <span>Package Type</span>
-                <strong>
-                  {shipment.packageType}
-                </strong>
+                <strong>{shipment.packageDescription}</strong>
               </div>
-
-              <div className="detail-row">
-                <span>Quantity</span>
-                <strong>
-                  {shipment.quantity}
-                </strong>
-              </div>
-
-              <div className="detail-row">
+              }
+              {shipment.packageWeightKg != null && <div className="detail-row">
                 <span>Total Weight</span>
-                <strong>
-                  {shipment.weight}
-                </strong>
+                <strong>{shipment.packageWeightKg} kg</strong>
               </div>
-
-              <div className="detail-row">
-                <span>Driver</span>
-                <strong>
-                  {shipment.driver}
-                </strong>
-              </div>
-
-              <div className="detail-row">
-                <span>Vehicle</span>
-                <strong>
-                  {shipment.vehicle}
-                </strong>
-              </div>
-
-              <div className="detail-row">
-                <span>Transport</span>
-                <strong>
-                  {shipment.mode}
-                </strong>
-              </div>
+              }
+              {shipment.route?.distanceKm != null && <div className="detail-row">
+                <span>Route Distance</span>
+                <strong>{shipment.route.distanceKm} km</strong>
+              </div>}
+              {shipment.route?.estimatedDurationMinutes != null && <div className="detail-row">
+                <span>Route Duration</span>
+                <strong>{shipment.route.estimatedDurationMinutes} min</strong>
+              </div>}
+              {shipment.eta && <>
+                {shipment.eta.trafficCondition && <div className="detail-row">
+                  <span>Traffic</span>
+                  <strong>{String(shipment.eta.trafficCondition).replaceAll("_", " ")}</strong>
+                </div>}
+                {shipment.eta.trafficDelayHours != null && <div className="detail-row">
+                  <span>Traffic Delay</span>
+                  <strong>{formatHours(shipment.eta.trafficDelayHours)}</strong>
+                </div>}
+                {shipment.eta.weatherDelayHours != null && <div className="detail-row">
+                  <span>Weather Delay</span>
+                  <strong>{formatHours(shipment.eta.weatherDelayHours)}</strong>
+                </div>}
+                {shipment.eta.routeChangeDelayHours != null && <div className="detail-row">
+                  <span>Route Change Delay</span>
+                  <strong>{formatHours(shipment.eta.routeChangeDelayHours)}</strong>
+                </div>}
+                {shipment.eta.predictedDelayHours != null && <div className="detail-row">
+                  <span>Predicted Delay</span>
+                  <strong>{formatHours(shipment.eta.predictedDelayHours)}</strong>
+                </div>}
+              </>}
+              {shipment.forecasts.map((forecast) => (
+                <div className="detail-row" key={forecast.id}>
+                  <span>Forecast · {String(forecast.predictedStatus || "").replaceAll("_", " ")}</span>
+                  <strong>
+                    {forecast.predictedDeliveryTime
+                      ? new Date(forecast.predictedDeliveryTime).toLocaleString()
+                      : ""}
+                    {formatConfidence(forecast.confidence)}
+                  </strong>
+                </div>
+              ))}
 
             </div>
 

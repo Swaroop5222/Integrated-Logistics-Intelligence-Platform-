@@ -10,6 +10,7 @@ import com.shiptrack.repository.RouteRepository;
 import com.shiptrack.repository.ShipmentRepository;
 import com.shiptrack.repository.UserRepository;
 import com.shiptrack.service.MapsService;
+import com.shiptrack.service.ShipmentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,17 +27,20 @@ public class RouteController {
     private final ShipmentRepository shipmentRepository;
     private final UserRepository userRepository;
     private final MapsService mapsService;
+    private final ShipmentService shipmentService;
 
     public RouteController(
             RouteRepository routeRepository,
             ShipmentRepository shipmentRepository,
             UserRepository userRepository,
-            MapsService mapsService) {
+            MapsService mapsService,
+            ShipmentService shipmentService) {
 
         this.routeRepository = routeRepository;
         this.shipmentRepository = shipmentRepository;
         this.userRepository = userRepository;
         this.mapsService = mapsService;
+        this.shipmentService = shipmentService;
     }
 
     @PostMapping("/shipment/{shipmentId}/calculate")
@@ -119,6 +123,7 @@ return ResponseEntity.ok(
                         new ResourceNotFoundException(
                                 "Route not found with ID: " + id));
 
+        shipmentService.getShipmentById(route.getShipment().getId());
         return ResponseEntity.ok(RouteResponse.from(route));
     }
 
@@ -126,6 +131,7 @@ return ResponseEntity.ok(
     public ResponseEntity<RouteResponse> getShipmentRoute(
         @PathVariable Long shipmentId) {
 
+        shipmentService.getShipmentById(shipmentId);
         Route route = routeRepository.findByShipmentId(shipmentId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(

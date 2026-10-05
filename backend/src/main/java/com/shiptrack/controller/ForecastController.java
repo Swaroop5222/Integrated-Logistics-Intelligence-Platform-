@@ -1,6 +1,7 @@
 package com.shiptrack.controller;
 
 import com.shiptrack.entity.Forecast;
+import com.shiptrack.dto.ForecastResponse;
 import com.shiptrack.service.ForecastService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,28 +19,36 @@ public class ForecastController {
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<Forecast> generateForecast(
+    public ResponseEntity<ForecastResponse> generateForecast(
             @RequestParam Long shipmentId) {
 
         return ResponseEntity.ok(
-                forecastService.generateForecast(shipmentId)
+                ForecastResponse.from(
+                        forecastService.generateForecast(shipmentId)
+                )
         );
     }
 
     @GetMapping("/shipment/{shipmentId}")
-    public ResponseEntity<List<Forecast>> getByShipment(
+    public ResponseEntity<List<ForecastResponse>> getByShipment(
             @PathVariable Long shipmentId) {
 
         return ResponseEntity.ok(
                 forecastService.getForecastsForShipment(shipmentId)
+                        .stream()
+                        .map(ForecastResponse::from)
+                        .toList()
         );
     }
 
     @GetMapping
-    public ResponseEntity<List<Forecast>> listAll() {
+    public ResponseEntity<List<ForecastResponse>> listAll() {
 
         return ResponseEntity.ok(
                 forecastService.listAll()
+                        .stream()
+                        .map(ForecastResponse::from)
+                        .toList()
         );
     }
 }

@@ -55,13 +55,9 @@ function getInitials(name) {
 
 function getCustomerId(shipment) {
   return (
-    shipment?.customer?.id ||
-    shipment?.customerId ||
-    shipment?.assignedCustomerId ||
-    shipment?.receiverEmail ||
-    shipment?.receiverName ||
-    shipment?.receiverPhone ||
-    shipment?.id
+    shipment?.customer?.id ??
+    shipment?.customerId ??
+    null
   );
 }
 
@@ -70,19 +66,7 @@ function getCustomerName(shipment) {
     shipment?.customer?.fullName ||
     shipment?.customer?.name ||
     shipment?.customerName ||
-    shipment?.receiverName ||
-    shipment?.receiver?.name ||
-    shipment?.receiver ||
-    "Customer data unavailable"
-  );
-}
-
-function getCustomerEmail(shipment) {
-  return (
-    shipment?.customer?.email ||
-    shipment?.customerEmail ||
-    shipment?.receiverEmail ||
-    null
+    "Not assigned"
   );
 }
 
@@ -90,23 +74,13 @@ function getShipmentStatus(shipment) {
   return String(shipment?.status || "").toUpperCase();
 }
 
-function getActivityDate(shipment) {
-  return (
-    shipment?.updatedAt ||
-    shipment?.createdAt ||
-    shipment?.updatedDate ||
-    shipment?.createdDate ||
-    null
-  );
-}
-
 function formatActivityDate(value) {
-  if (!value) return "Data unavailable";
+  if (!value) return "";
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Data unavailable";
+    return "";
   }
 
   return date.toLocaleString("en-IN", {
@@ -116,50 +90,6 @@ function formatActivityDate(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatRelativeTime(value) {
-  if (!value) return "Data unavailable";
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Data unavailable";
-  }
-
-  const diff = Date.now() - date.getTime();
-
-  if (diff < 0) {
-    return "Just now";
-  }
-
-  const minutes = Math.floor(diff / 60000);
-
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} min ago`;
-
-  const hours = Math.floor(minutes / 60);
-
-  if (hours < 24) {
-    return `${hours} hr${hours === 1 ? "" : "s"} ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-
-  if (days < 7) {
-    return `${days} day${days === 1 ? "" : "s"} ago`;
-  }
-
-  return formatActivityDate(value);
-}
-
-function getTrackingNumber(shipment) {
-  return (
-    shipment?.trackingNumber ||
-    shipment?.trackingId ||
-    shipment?.referenceId ||
-    `Shipment #${shipment?.id ?? "unavailable"}`
-  );
 }
 
 function isActiveShipment(shipment) {
@@ -173,6 +103,7 @@ function isDeliveredShipment(shipment) {
 export default function CustomerActivity() {
   const [user, setUser] = useState(null);
   const [shipments, setShipments] = useState([]);
+  const [statusHistory, setStatusHistory] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
@@ -203,6 +134,44 @@ export default function CustomerActivity() {
 
         setUser(currentUser);
         setShipments(shipmentList);
+
+        const historyResults = await Promise.allSettled(
+          shipmentList
+            .filter((shipment) => shipment?.id)
+            .map(async (shipment) => {
+              const history = await apiRequest(
+                `/api/shipments/${shipment.id}/history`
+              );
+              return (Array.isArray(history) ? history : []).map((event) => ({
+                ...event,
+                trackingNumber: shipment.trackingNumber,
+                receiverName: getCustomerName(shipment),
+              }));
+            })
+        );
+        if (!mounted) return;
+        const failedHistoryRequests = historyResults.filter(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.status !== 404
+        );
+        if (failedHistoryRequests.length > 0) {
+          console.error(
+            "Failed to load customer shipment history:",
+            failedHistoryRequests.map((result) => result.reason)
+          );
+          setError(
+            "Some shipment activity could not be loaded."
+          );
+        }
+        setStatusHistory(
+          historyResults
+            .filter((result) => result.status === "fulfilled")
+            .flatMap((result) => result.value)
+            .sort((a, b) =>
+              new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+            )
+        );
       } catch (err) {
         if (!mounted) return;
 
@@ -244,7 +213,6 @@ export default function CustomerActivity() {
         grouped.set(key, {
           id: customerId,
           name: getCustomerName(shipment),
-          email: getCustomerEmail(shipment),
           shipments: [],
         });
       }
@@ -263,22 +231,12 @@ export default function CustomerActivity() {
         isDeliveredShipment
       ).length;
 
-      const latestShipment = [...customerShipments].sort(
-        (a, b) => {
-          const dateA = new Date(
-            getActivityDate(a) || 0
-          ).getTime();
-
-          const dateB = new Date(
-            getActivityDate(b) || 0
-          ).getTime();
-
-          return dateB - dateA;
-        }
-      )[0];
-
-      const latestActivity =
-        getActivityDate(latestShipment);
+      const customerTrackingNumbers = new Set(
+        customerShipments.map((shipment) => shipment.trackingNumber)
+      );
+      const latestActivity = statusHistory.find((event) =>
+        customerTrackingNumbers.has(event.trackingNumber)
+      )?.createdAt || null;
 
       /*
        * A customer is considered currently active only when
@@ -295,7 +253,7 @@ export default function CustomerActivity() {
         status,
       };
     });
-  }, [shipments]);
+  }, [shipments, statusHistory]);
 
   const filteredCustomers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -304,9 +262,7 @@ export default function CustomerActivity() {
       const matchesSearch =
         !query ||
         customer.name.toLowerCase().includes(query) ||
-        (customer.email || "")
-          .toLowerCase()
-          .includes(query);
+        String(customer.id).toLowerCase().includes(query);
 
       const matchesStatus =
         statusFilter === "ALL" ||
@@ -326,94 +282,20 @@ export default function CustomerActivity() {
     isActiveShipment
   ).length;
 
-  /*
-   * There is no customer engagement percentage field in the
-   * current backend. Therefore it is intentionally not
-   * calculated from arbitrary assumptions.
-   */
-  const engagementPercentage = null;
-
-  /*
-   * Recent activity is derived from actual shipment records.
-   * The backend does not provide "tracking viewed" events,
-   * so those events are not fabricated.
-   */
   const recentActivity = useMemo(() => {
-    return [...shipments]
-      .sort((a, b) => {
-        const dateA = new Date(
-          getActivityDate(a) || 0
-        ).getTime();
-
-        const dateB = new Date(
-          getActivityDate(b) || 0
-        ).getTime();
-
-        return dateB - dateA;
-      })
+    return statusHistory
       .slice(0, 5)
-      .map((shipment) => {
-        const status = getShipmentStatus(shipment);
-
-        let type = "created";
-        let icon = "+";
-        let title = "Shipment Created";
-
-        if (status === DELIVERED_STATUS) {
-          type = "delivered";
-          icon = "✓";
-          title = "Shipment Delivered";
-        } else if (ACTIVE_STATUSES.includes(status)) {
-          type = "tracking";
-          icon = "⌖";
-          title = "Shipment Updated";
-        }
-
+      .map((event) => {
+        const status = String(event.status || "").toUpperCase();
         return {
-          shipment,
-          type,
-          icon,
-          title,
-          customer: getCustomerName(shipment),
-          tracking: getTrackingNumber(shipment),
-          date: getActivityDate(shipment),
+          ...event,
+          type: status === DELIVERED_STATUS ? "delivered" : "tracking",
+          icon: status === DELIVERED_STATUS ? "✓" : "⌖",
+          title: status.replaceAll("_", " "),
         };
       });
-  }, [shipments]);
+  }, [statusHistory]);
 
-  /*
-   * Engagement metrics are only shown when supported by the
-   * backend. No percentages are invented.
-   */
-  const engagementMetrics = [
-    {
-      title: "Tracking Activity",
-      description:
-        "Customers checking shipment status",
-      value: null,
-      className: "orange-engagement",
-      icon: "⌖",
-    },
-    {
-      title: "Shipment Creation",
-      description:
-        "Customers creating new shipments",
-      value: null,
-      className: "purple-engagement",
-      icon: "▣",
-    },
-    {
-      title: "Delivery Confirmation",
-      description:
-        "Customers viewing completed deliveries",
-      value: null,
-      className: "green-engagement",
-      icon: "✓",
-    },
-  ];
-
-  const inactiveCustomers =
-    totalCustomers - activeCustomers;
 
   const customerCountLabel = loading
     ? "Loading..."
@@ -489,8 +371,7 @@ export default function CustomerActivity() {
             <h1>Customer Activity</h1>
 
             <p>
-              Monitor customer shipment activity and
-              engagement across your logistics network.
+              Monitor customer shipment activity across your logistics network.
             </p>
           </div>
 
@@ -535,6 +416,7 @@ export default function CustomerActivity() {
         )}
 
         {/* STAT CARDS */}
+        {!error && (
         <section className="activity-stats">
           <div className="activity-stat-card orange">
             <div className="activity-stat-top">
@@ -550,7 +432,7 @@ export default function CustomerActivity() {
             </h2>
 
             <div className="activity-change">
-              Data unavailable
+              Customers represented in your shipment records
             </div>
           </div>
 
@@ -592,7 +474,7 @@ export default function CustomerActivity() {
 
           <div className="activity-stat-card green">
             <div className="activity-stat-top">
-              <span>Customer Engagement</span>
+              <span>Status Events</span>
 
               <div className="activity-stat-icon">
                 ↗
@@ -600,18 +482,18 @@ export default function CustomerActivity() {
             </div>
 
             <h2>
-              {engagementPercentage == null
-                ? "Data unavailable"
-                : `${engagementPercentage}%`}
+              {loading ? "..." : statusHistory.length}
             </h2>
 
             <div className="activity-change">
-              Backend engagement metric unavailable
+              Recorded shipment status history
             </div>
           </div>
         </section>
+        )}
 
         {/* CUSTOMER OVERVIEW + RECENT ACTIVITY */}
+        {!error && (
         <section className="activity-grid">
           <div className="activity-card">
             <div className="activity-card-header">
@@ -619,8 +501,7 @@ export default function CustomerActivity() {
                 <h3>Customer Overview</h3>
 
                 <p>
-                  Shipment activity and engagement by
-                  customer
+                  Shipment counts and latest recorded status activity by customer
                 </p>
               </div>
 
@@ -700,14 +581,9 @@ export default function CustomerActivity() {
                               </div>
 
                               <div>
-                                <strong>
-                                  {customer.name}
-                                </strong>
-
-                                <span>
-                                  {customer.email ||
-                                    "Email unavailable"}
-                                </span>
+                                  <strong>
+                                    {customer.name || `Customer #${customer.id}`}
+                                  </strong>
                               </div>
                             </div>
                           </td>
@@ -794,7 +670,7 @@ export default function CustomerActivity() {
                 recentActivity.map((activity) => (
                   <div
                     className="recent-activity-item"
-                    key={activity.shipment.id}
+                    key={`${activity.shipmentId}-${activity.id}`}
                   >
                     <div
                       className={`recent-icon ${
@@ -815,24 +691,18 @@ export default function CustomerActivity() {
                       </strong>
 
                       <span>
-                        {activity.customer}
+                        {activity.receiverName || activity.trackingNumber}
                       </span>
 
                       <p>
-                        {activity.type ===
-                        "delivered"
-                          ? `Shipment ${activity.tracking} marked as delivered.`
-                          : activity.type ===
-                            "tracking"
-                          ? `Shipment ${activity.tracking} currently has active status.`
-                          : `Shipment ${activity.tracking} was created.`
-                        }
+                        {activity.remarks || activity.title}
+                        {activity.remarks && activity.trackingNumber
+                          ? ` · ${activity.trackingNumber}`
+                          : ""}
                       </p>
 
                       <small>
-                        {formatRelativeTime(
-                          activity.date
-                        )}
+                        {formatActivityDate(activity.createdAt)}
                       </small>
                     </div>
                   </div>
@@ -841,148 +711,15 @@ export default function CustomerActivity() {
             </div>
           </div>
         </section>
-
-        {/* ENGAGEMENT */}
-        <section className="activity-card engagement-card">
-          <div className="activity-card-header">
-            <div>
-              <h3>Customer Engagement</h3>
-
-              <p>
-                Understand how customers interact with
-                your logistics platform.
-              </p>
-            </div>
-          </div>
-
-          <div className="engagement-grid">
-            {engagementMetrics.map((metric) => (
-              <div
-                className="engagement-item"
-                key={metric.title}
-              >
-                <div
-                  className={`engagement-icon ${metric.className}`}
-                >
-                  {metric.icon}
-                </div>
-
-                <div className="engagement-info">
-                  <strong>{metric.title}</strong>
-
-                  <p>{metric.description}</p>
-
-                  <div className="engagement-progress">
-                    <div
-                      style={{
-                        width:
-                          metric.value == null
-                            ? "0%"
-                            : `${metric.value}%`,
-                      }}
-                    />
-                  </div>
-
-                  <span>
-                    {metric.value == null
-                      ? "Data unavailable"
-                      : `${metric.value}%`}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* INSIGHTS */}
-        <section className="activity-card customer-insights">
-          <div className="activity-card-header">
-            <div>
-              <h3>Customer Insights</h3>
-
-              <p>
-                Useful observations from current shipment
-                data
-              </p>
-            </div>
-          </div>
-
-          <div className="insights-grid">
-            <div className="customer-insight">
-              <div className="customer-insight-icon green-insight">
-                ↑
-              </div>
-
-              <div>
-                <strong>
-                  Customer activity
-                </strong>
-
-                <p>
-                  {totalCustomers > 0
-                    ? `${activeCustomers} of ${totalCustomers} customers currently have active shipment activity.`
-                    : "Customer activity data unavailable."}
-                </p>
-              </div>
-            </div>
-
-            <div className="customer-insight">
-              <div className="customer-insight-icon purple-insight">
-                ●
-              </div>
-
-              <div>
-                <strong>
-                  Active customers
-                </strong>
-
-                <p>
-                  {activeCustomers > 0
-                    ? `${activeCustomers} customer${
-                        activeCustomers === 1
-                          ? ""
-                          : "s"
-                      } currently have ongoing shipment activity.`
-                    : "No active customer shipment activity is currently available."}
-                </p>
-              </div>
-            </div>
-
-            <div className="customer-insight">
-              <div className="customer-insight-icon orange-insight">
-                !
-              </div>
-
-              <div>
-                <strong>
-                  Inactive customers
-                </strong>
-
-                <p>
-                  {totalCustomers > 0
-                    ? `${inactiveCustomers} customer${
-                        inactiveCustomers === 1
-                          ? ""
-                          : "s"
-                      } currently have no active shipment.`
-                    : "Customer activity data unavailable."}
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        )}
 
         <footer className="customer-activity-footer">
           <span>
             © 2026 ShipTrack Intelligence Platform
           </span>
 
-          <span>
-            Customer Activity Monitoring: Operational
-          </span>
         </footer>
       </main>
     </div>
   );
 }
-

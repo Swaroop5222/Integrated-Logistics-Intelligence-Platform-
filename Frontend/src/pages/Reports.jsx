@@ -10,11 +10,6 @@ const ACTIVE_STATUSES = [
   "OUT_FOR_DELIVERY",
 ];
 
-const DELAYED_STATUSES = [
-  "FAILED_DELIVERY",
-  "DELAYED",
-];
-
 function getArray(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.content)) return data.content;
@@ -28,28 +23,15 @@ function getStatus(shipment) {
 }
 
 function getTrackingNumber(shipment) {
-  return (
-    shipment?.trackingNumber ||
-    shipment?.trackingId ||
-    shipment?.referenceId ||
-    `SHIPMENT-${shipment?.id ?? "N/A"}`
-  );
+  return shipment?.trackingNumber || "";
 }
 
 function getCustomerName(shipment) {
-  if (shipment?.customer?.name) {
-    return shipment.customer.name;
-  }
-
-  if (shipment?.customer?.fullName) {
-    return shipment.customer.fullName;
-  }
-
-  return "Data unavailable";
+  return shipment?.customerName || "Not assigned";
 }
 
 function formatStatus(status) {
-  if (!status) return "Unknown";
+  if (!status) return "";
 
   return status
     .toLowerCase()
@@ -59,12 +41,12 @@ function formatStatus(status) {
 }
 
 function formatDate(value) {
-  if (!value) return "Data unavailable";
+  if (!value) return "";
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Data unavailable";
+    return "";
   }
 
   return date.toLocaleDateString("en-IN", {
@@ -90,6 +72,7 @@ function Reports() {
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reportStatus, setReportStatus] = useState("all");
 
   useEffect(() => {
     let mounted = true;
@@ -138,16 +121,17 @@ function Reports() {
     (shipment) => getStatus(shipment) === "DELIVERED"
   ).length;
 
-  const delayed = shipments.filter((shipment) =>
-    DELAYED_STATUSES.includes(getStatus(shipment))
+  const failedDeliveries = shipments.filter(
+    (shipment) => getStatus(shipment) === "FAILED_DELIVERY"
   ).length;
 
-  const cancelled = shipments.filter(
-    (shipment) => getStatus(shipment) === "CANCELLED"
-  ).length;
-
-  const deliveryRate =
-    total > 0 ? ((delivered / total) * 100).toFixed(1) : "0.0";
+  const filteredShipments = shipments.filter((shipment) => {
+    if (reportStatus === "all") return true;
+    if (reportStatus === "active") {
+      return ACTIVE_STATUSES.includes(getStatus(shipment));
+    }
+    return getStatus(shipment) === reportStatus.toUpperCase();
+  });
 
   const userName =
     user?.name ||
@@ -164,20 +148,36 @@ function Reports() {
     window.location.href = "/login";
   }
 
-  function exportCsv() {
-    if (!shipments.length) return;
+  function exportCsv(records = filteredShipments) {
+    if (!records.length) return;
 
     const headers = [
       "Tracking Number",
-      "Customer",
+      "Reference",
+      "Sender",
+      "Sender Phone",
+      "Sender Address",
+      "Receiver",
+      "Receiver Phone",
+      "Receiver Address",
+      "Package Description",
+      "Package Weight (kg)",
       "Status",
       "Created At",
       "Updated At",
     ];
 
-    const rows = shipments.map((shipment) => [
+    const rows = records.map((shipment) => [
       getTrackingNumber(shipment),
+      shipment.referenceId || "",
+      shipment.senderName || "",
+      shipment.senderPhone || "",
+      shipment.senderAddress || "",
       getCustomerName(shipment),
+      shipment.receiverPhone || "",
+      shipment.receiverAddress || "",
+      shipment.packageDescription || "",
+      shipment.packageWeightKg ?? "",
       formatStatus(getStatus(shipment)),
       formatDate(shipment?.createdAt),
       formatDate(shipment?.updatedAt),
@@ -389,7 +389,13 @@ function Reports() {
         )}
 
         {/* SUCCESS / STATUS */}
-        {!error && (
+        {loading && (
+          <div className="report-success">
+            Loading shipment report data...
+          </div>
+        )}
+
+        {!error && !loading && (
           <div className="report-success">
             <span>✓</span>
             Report data loaded from the backend successfully.
@@ -397,6 +403,7 @@ function Reports() {
         )}
 
         {/* STATS */}
+        {!error && !loading && (
         <section className="report-stats">
 
           <div className="report-stat-card orange">
@@ -437,19 +444,21 @@ function Reports() {
 
           <div className="report-stat-card cyan">
             <div className="report-stat-top">
-              <span>Delayed</span>
+              <span>Failed Deliveries</span>
               <div className="report-stat-icon">!</div>
             </div>
 
-            <h2>{delayed}</h2>
+            <h2>{failedDeliveries}</h2>
             <span className="report-stat-note">
               Failed delivery records
             </span>
           </div>
 
         </section>
+        )}
 
         {/* GENERATE REPORT */}
+        {!error && !loading && (
         <section className="report-card generate-card">
 
           <div className="report-card-header">
@@ -482,10 +491,14 @@ function Reports() {
             <div className="report-field">
               <label>STATUS</label>
 
-              <select defaultValue="all">
+              <select
+                value={reportStatus}
+                onChange={(event) => setReportStatus(event.target.value)}
+              >
                 <option value="all">All Shipments</option>
                 <option value="active">Active Shipments</option>
                 <option value="delivered">Delivered</option>
+                <option value="failed_delivery">Failed Delivery</option>
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
@@ -510,8 +523,10 @@ function Reports() {
           </div>
 
         </section>
+        )}
 
         {/* REPORT LIST */}
+        {!error && !loading && (
         <section className="report-card reports-list-card">
 
           <div className="report-card-header">
@@ -524,14 +539,14 @@ function Reports() {
             </div>
 
             <span className="reports-count">
-              {shipments.length} records
+              {filteredShipments.length} records
             </span>
 
           </div>
 
           <div className="reports-list">
 
-            {shipments.length === 0 ? (
+            {filteredShipments.length === 0 ? (
               <div className="report-item">
                 <div className="report-details">
                   <strong>No shipment records available</strong>
@@ -541,7 +556,7 @@ function Reports() {
                 </div>
               </div>
             ) : (
-              shipments.map((shipment) => {
+              filteredShipments.map((shipment) => {
 
                 const status = getStatus(shipment);
 
@@ -585,10 +600,6 @@ function Reports() {
 
                     <div className="report-actions">
 
-                      <span className="ready-badge">
-                        READY
-                      </span>
-
                       <button
                         type="button"
                         className="preview-button"
@@ -604,7 +615,7 @@ function Reports() {
                       <button
                         type="button"
                         className="export-button"
-                        onClick={exportCsv}
+                        onClick={() => exportCsv([shipment])}
                       >
                         Export
                       </button>
@@ -619,48 +630,10 @@ function Reports() {
           </div>
 
         </section>
+        )}
 
-        {/* EXPORT OPTIONS */}
+        {/* SUPPORTED EXPORT */}
         <div className="export-grid">
-
-          <div className="report-card export-option">
-
-            <div className="export-option-icon pdf-icon">
-              PDF
-            </div>
-
-            <div>
-              <strong>PDF Report</strong>
-              <p>
-                PDF generation is not available in the current backend.
-              </p>
-            </div>
-
-            <button type="button" disabled>
-              N/A
-            </button>
-
-          </div>
-
-          <div className="report-card export-option">
-
-            <div className="export-option-icon excel-icon">
-              XLS
-            </div>
-
-            <div>
-              <strong>Excel</strong>
-              <p>
-                Export current shipment data.
-              </p>
-            </div>
-
-            <button type="button" onClick={exportCsv}>
-              Export
-            </button>
-
-          </div>
-
           <div className="report-card export-option">
 
             <div className="export-option-icon csv-icon">
@@ -681,74 +654,6 @@ function Reports() {
           </div>
 
         </div>
-
-        {/* INSIGHTS */}
-        <section className="report-card report-insights">
-
-          <div className="report-card-header">
-
-            <div>
-              <h3>Report Insights</h3>
-              <p>
-                Calculated from the current shipment data.
-              </p>
-            </div>
-
-          </div>
-
-          <div className="report-insight-grid">
-
-            <div className="report-insight">
-
-              <div className="insight-icon green">
-                ✓
-              </div>
-
-              <div>
-                <strong>Delivery Rate</strong>
-                <p>
-                  {deliveryRate}% of current shipments are marked
-                  as delivered.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="report-insight">
-
-              <div className="insight-icon purple">
-                ▣
-              </div>
-
-              <div>
-                <strong>Active Shipments</strong>
-                <p>
-                  {active} shipment{active === 1 ? "" : "s"} currently
-                  have an active lifecycle status.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="report-insight">
-
-              <div className="insight-icon orange">
-                !
-              </div>
-
-              <div>
-                <strong>Cancelled Shipments</strong>
-                <p>
-                  {cancelled} shipment{cancelled === 1 ? "" : "s"} are
-                  currently marked as cancelled.
-                </p>
-              </div>
-
-            </div>
-
-          </div>
-
-        </section>
 
         {/* FOOTER */}
         <footer className="reports-footer">

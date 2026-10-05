@@ -1,6 +1,7 @@
 package com.shiptrack;
 import com.shiptrack.repository.ProofOfDeliveryRepository;
 import com.shiptrack.repository.ForecastRepository;
+import com.shiptrack.repository.NotificationRepository;
 import com.shiptrack.dto.RegisterRequest;
 import com.shiptrack.dto.ShipmentRequest;
 import com.shiptrack.dto.ShipmentResponse;
@@ -56,10 +57,14 @@ private ProofOfDeliveryRepository proofOfDeliveryRepository;
     @Autowired
     private ForecastRepository forecastRepository;
 
+    @Autowired
+    private NotificationRepository notificationRepository;
+
 @BeforeEach
 void setUp() {
     proofOfDeliveryRepository.deleteAll();
     forecastRepository.deleteAll();
+    notificationRepository.deleteAll();
     routeRepository.deleteAll();
     shipmentStatusHistoryRepository.deleteAll();
     shipmentLocationRepository.deleteAll();

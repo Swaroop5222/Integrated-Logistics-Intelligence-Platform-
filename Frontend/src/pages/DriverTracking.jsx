@@ -1,6 +1,6 @@
 
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Bell,
@@ -21,59 +21,196 @@ import {
 import { apiRequest } from "../api";
 import "./DriverTracking.css";
 
+const LOCATION_REFRESH_INTERVAL = 15000;
+
+function hasCoordinates(location) {
+  return (
+    location?.latitude != null &&
+    location?.longitude != null &&
+    String(location.latitude).trim() !== "" &&
+    String(location.longitude).trim() !== "" &&
+    Number.isFinite(Number(location.latitude)) &&
+    Number.isFinite(Number(location.longitude)) &&
+    Math.abs(Number(location.latitude)) <= 90 &&
+    Math.abs(Number(location.longitude)) <= 180
+  );
+}
+
+function summarizeSpeed(locationHistory) {
+  const points = (Array.isArray(locationHistory) ? locationHistory : [])
+    .filter((location) => {
+      const recordedAt = new Date(location?.recordedAt).getTime();
+      return hasCoordinates(location) && Number.isFinite(recordedAt);
+    })
+    .map((location) => ({
+      latitude: Number(location.latitude),
+      longitude: Number(location.longitude),
+      recordedAt: new Date(location.recordedAt).getTime(),
+    }))
+    .sort((first, second) => first.recordedAt - second.recordedAt);
+
+  let distanceKm = 0;
+  let elapsedHours = 0;
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const intervalHours =
+      (current.recordedAt - previous.recordedAt) / 3600000;
+
+    if (intervalHours <= 0) continue;
+
+    const radians = (degrees) => (degrees * Math.PI) / 180;
+    const latitudeDelta = radians(current.latitude - previous.latitude);
+    const longitudeDelta = radians(current.longitude - previous.longitude);
+    const haversine =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(radians(previous.latitude)) *
+        Math.cos(radians(current.latitude)) *
+        Math.sin(longitudeDelta / 2) ** 2;
+    const boundedHaversine = Math.min(1, Math.max(0, haversine));
+    const distance =
+      6371 *
+      2 *
+      Math.atan2(
+        Math.sqrt(boundedHaversine),
+        Math.sqrt(1 - boundedHaversine)
+      );
+
+    distanceKm += distance;
+    elapsedHours += intervalHours;
+  }
+
+  return {
+    speedKmh: elapsedHours > 0 ? distanceKm / elapsedHours : null,
+    distanceKm,
+    elapsedHours,
+  };
+}
+
 function DriverTracking() {
   const [shipments, setShipments] = useState([]);
   const [locations, setLocations] = useState({});
+  const [locationHistories, setLocationHistories] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const requestInProgress = useRef(false);
+  const mapRef = useRef(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async (showLoading = false) => {
+    if (requestInProgress.current) return;
+    requestInProgress.current = true;
+    if (showLoading) setLoading(true);
+
     try {
-      setLoading(true);
-
       const [user, shipmentData] = await Promise.all([
         apiRequest("/api/users/me"),
         apiRequest("/api/shipments"),
       ]);
 
-      const shipmentList = Array.isArray(shipmentData)
-        ? shipmentData
-        : [];
+      if (!Array.isArray(shipmentData)) {
+        throw new Error("Unexpected response while loading assigned shipments.");
+      }
+
+      const shipmentList = shipmentData.filter(
+        (shipment) =>
+          Number(shipment?.assignedOperatorId) === Number(user?.id)
+      );
 
       setCurrentUser(user);
       setShipments(shipmentList);
 
+      let hasLocationError = false;
       const locationResults = await Promise.all(
         shipmentList.map(async (shipment) => {
-          try {
-            const location = await apiRequest(
-              `/api/shipments/${shipment.id}/location`
-            );
+          const [locationResult, historyResult] = await Promise.allSettled([
+            apiRequest(`/api/shipments/${shipment.id}/location`),
+            apiRequest(`/api/shipments/${shipment.id}/location-history`),
+          ]);
 
-            return [shipment.id, location];
-          } catch (error) {
+          if (locationResult.status === "rejected") {
+            hasLocationError = true;
             console.error(
-              `Location unavailable for shipment ${shipment.id}:`,
-              error
+              `Failed to load current location for shipment ${shipment.id}:`,
+              locationResult.reason
             );
-
-            return [shipment.id, null];
           }
+
+          if (historyResult.status === "rejected") {
+            hasLocationError = true;
+            console.error(
+              `Failed to load location history for shipment ${shipment.id}:`,
+              historyResult.reason
+            );
+          }
+
+          const history =
+            historyResult.status === "fulfilled" &&
+            Array.isArray(historyResult.value)
+              ? historyResult.value
+              : [];
+          const currentLocation =
+            locationResult.status === "fulfilled"
+              ? locationResult.value
+              : null;
+          const latestHistoryLocation = [...history].sort(
+            (first, second) =>
+              new Date(second?.recordedAt || 0) -
+              new Date(first?.recordedAt || 0)
+          )[0];
+
+          return {
+            shipmentId: shipment.id,
+            location: currentLocation || latestHistoryLocation || null,
+            history,
+          };
         })
       );
 
-      setLocations(Object.fromEntries(locationResults));
+      setLocations(
+        Object.fromEntries(
+          locationResults.map(({ shipmentId, location }) => [
+            shipmentId,
+            location,
+          ])
+        )
+      );
+      setLocationHistories(
+        Object.fromEntries(
+          locationResults.map(({ shipmentId, history }) => [
+            shipmentId,
+            history,
+          ])
+        )
+      );
+      setLoadError(
+        hasLocationError ? "Some location updates could not be loaded." : ""
+      );
     } catch (error) {
       console.error("Failed to load driver tracking data:", error);
+      setLoadError("Driver location data could not be refreshed.");
     } finally {
       setLoading(false);
+      requestInProgress.current = false;
     }
-  };
+  }, []);
 
   useEffect(() => {
+    loadData(true);
+    const refreshTimer = window.setInterval(
+      () => loadData(),
+      LOCATION_REFRESH_INTERVAL
+    );
+
+    return () => window.clearInterval(refreshTimer);
+  }, [loadData]);
+
+  const centerMap = () => {
+    mapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     loadData();
-  }, []);
+  };
 
   const operatorName =
     currentUser?.name ||
@@ -118,18 +255,52 @@ function DriverTracking() {
     });
 
     return Array.from(grouped.values()).map((driver) => {
-      const activeShipment = driver.shipments.find(
+      const activeShipments = driver.shipments.filter(
         (shipment) =>
           shipment.status !== "DELIVERED" &&
           shipment.status !== "CANCELLED"
       );
+      const candidateShipments =
+        activeShipments.length > 0 ? activeShipments : driver.shipments;
 
-      const selectedShipment =
-        activeShipment ||
-        [...driver.shipments].sort(
-          (a, b) =>
-            new Date(b.updatedAt || b.createdAt || 0) -
-            new Date(a.updatedAt || a.createdAt || 0)
+      const selectedShipment = [...candidateShipments].sort((first, second) => {
+        const firstLocation = locations[first.id];
+        const secondLocation = locations[second.id];
+        const firstHasLocation = hasCoordinates(firstLocation);
+        const secondHasLocation = hasCoordinates(secondLocation);
+
+        if (firstHasLocation !== secondHasLocation) {
+          return firstHasLocation ? -1 : 1;
+        }
+
+        if (firstHasLocation && secondHasLocation) {
+          const locationTimeDifference =
+            new Date(secondLocation.recordedAt || 0) -
+            new Date(firstLocation.recordedAt || 0);
+          if (locationTimeDifference !== 0) return locationTimeDifference;
+        }
+
+        return (
+          new Date(second.updatedAt || second.createdAt || 0) -
+          new Date(first.updatedAt || first.createdAt || 0)
+        );
+      })[0];
+      const speedTotals = driver.shipments.reduce(
+        (result, shipment) => {
+          const summary = summarizeSpeed(locationHistories[shipment.id]);
+          return {
+            distanceKm: result.distanceKm + summary.distanceKm,
+            elapsedHours: result.elapsedHours + summary.elapsedHours,
+          };
+        },
+        { distanceKm: 0, elapsedHours: 0 }
+      );
+      const latestLocationShipment = [...driver.shipments]
+        .filter((shipment) => hasCoordinates(locations[shipment.id]))
+        .sort(
+          (first, second) =>
+            new Date(locations[second.id]?.recordedAt || 0) -
+            new Date(locations[first.id]?.recordedAt || 0)
         )[0];
 
       return {
@@ -138,9 +309,17 @@ function DriverTracking() {
         location: selectedShipment
           ? locations[selectedShipment.id]
           : null,
+        latestLocation: latestLocationShipment
+          ? locations[latestLocationShipment.id]
+          : null,
+        latestLocationShipment,
+        speedKmh:
+          speedTotals.elapsedHours > 0
+            ? speedTotals.distanceKm / speedTotals.elapsedHours
+            : null,
       };
     });
-  }, [shipments, locations]);
+  }, [shipments, locations, locationHistories]);
 
   const activeDrivers = drivers.filter(
     (driver) =>
@@ -161,12 +340,19 @@ function DriverTracking() {
       .filter(Boolean)
   );
 
-  const trackedLocations = Object.values(locations).filter(
-    (location) =>
-      location &&
-      location.latitude != null &&
-      location.longitude != null
-  ).length;
+  const mapDrivers = drivers.filter(
+    (driver) => hasCoordinates(driver.latestLocation)
+  );
+  const trackedLocations = mapDrivers.length;
+
+  const speedDrivers = drivers.filter(
+    (driver) => driver.speedKmh != null
+  );
+  const averageSpeed =
+    speedDrivers.length > 0
+      ? speedDrivers.reduce((total, driver) => total + driver.speedKmh, 0) /
+        speedDrivers.length
+      : null;
 
   const totalDrivers = drivers.length;
   const onRoadDrivers = activeDrivers.length;
@@ -254,37 +440,52 @@ function DriverTracking() {
     }
   };
 
-  /*
-   * Convert actual GPS coordinates into positions
-   * on the existing decorative map.
-   */
-  const getMapPosition = (location) => {
-    if (
-      !location ||
-      location.latitude == null ||
-      location.longitude == null
-    ) {
-      return null;
+  const mapBounds = mapDrivers.reduce(
+    (bounds, driver) => ({
+      minLatitude: Math.min(
+        bounds.minLatitude,
+        Number(driver.latestLocation.latitude)
+      ),
+      maxLatitude: Math.max(
+        bounds.maxLatitude,
+        Number(driver.latestLocation.latitude)
+      ),
+      minLongitude: Math.min(
+        bounds.minLongitude,
+        Number(driver.latestLocation.longitude)
+      ),
+      maxLongitude: Math.max(
+        bounds.maxLongitude,
+        Number(driver.latestLocation.longitude)
+      ),
+    }),
+    {
+      minLatitude: Infinity,
+      maxLatitude: -Infinity,
+      minLongitude: Infinity,
+      maxLongitude: -Infinity,
     }
+  );
 
-    const minLat = 8;
-    const maxLat = 21;
-    const minLng = 72;
-    const maxLng = 88;
-
-    const left =
-      ((location.longitude - minLng) /
-        (maxLng - minLng)) *
-      100;
-
-    const top =
-      ((maxLat - location.latitude) /
-        (maxLat - minLat)) *
-      100;
+  const getMapPosition = (location) => {
+    const latitudeRange =
+      mapBounds.maxLatitude - mapBounds.minLatitude;
+    const longitudeRange =
+      mapBounds.maxLongitude - mapBounds.minLongitude;
+    const latitudeRatio =
+      latitudeRange > 0
+        ? (Number(location.latitude) - mapBounds.minLatitude) /
+          latitudeRange
+        : 0.5;
+    const longitudeRatio =
+      longitudeRange > 0
+        ? (Number(location.longitude) - mapBounds.minLongitude) /
+          longitudeRange
+        : 0.5;
 
     return {
-      left: `${Math.max(5, Math.min(95, left))}%`,
-      top: `${Math.max(8, Math.min(92, top))}%`,
+      left: `${10 + longitudeRatio * 80}%`,
+      top: `${90 - latitudeRatio * 80}%`,
     };
   };
 
@@ -499,10 +700,16 @@ function DriverTracking() {
 
               <span>Avg Speed</span>
 
-              <strong>Not available</strong>
+              <strong>
+                {averageSpeed == null
+                  ? "Not available"
+                  : `${averageSpeed.toFixed(1)} km/h`}
+              </strong>
 
               <small>
-                Speed data unavailable
+                {averageSpeed == null
+                  ? "Speed data unavailable"
+                  : "Calculated from recorded GPS locations"}
               </small>
 
             </div>
@@ -555,7 +762,7 @@ function DriverTracking() {
 
               </div>
 
-              <button className="center-driver-map">
+              <button className="center-driver-map" onClick={centerMap}>
                 <Navigation size={15} />
                 Center Map
               </button>
@@ -563,7 +770,7 @@ function DriverTracking() {
             </div>
 
 
-            <div className="driver-map">
+            <div className="driver-map" ref={mapRef}>
 
               <div className="driver-map-grid"></div>
 
@@ -572,41 +779,9 @@ function DriverTracking() {
               <div className="driver-map-road map-road-c"></div>
               <div className="driver-map-road map-road-d"></div>
 
-
-              <div className="driver-city hyd-city">
-                <span></span>
-                Hyderabad
-              </div>
-
-              <div className="driver-city blr-city">
-                <span></span>
-                Bengaluru
-              </div>
-
-              <div className="driver-city mum-city">
-                <span></span>
-                Mumbai
-              </div>
-
-              <div className="driver-city chn-city">
-                <span></span>
-                Chennai
-              </div>
-
-
-              {/* Real backend GPS markers */}
-
-              {drivers
-                .filter((driver) => driver.location)
+              {mapDrivers
                 .map((driver) => {
-
-                  const position = getMapPosition(
-                    driver.location
-                  );
-
-                  if (!position) {
-                    return null;
-                  }
+                  const position = getMapPosition(driver.latestLocation);
 
                   return (
                     <div
@@ -617,8 +792,12 @@ function DriverTracking() {
                         top: position.top,
                       }}
                       title={`${driver.name} - ${
-                        driver.location.locationName ||
-                        "GPS location"
+                        driver.latestLocation.locationName ||
+                        `${driver.latestLocation.latitude}, ${driver.latestLocation.longitude}`
+                      }${
+                        driver.latestLocation.recordedAt
+                          ? ` (recorded ${driver.latestLocation.recordedAt})`
+                          : ""
                       }`}
                     >
                       <Truck size={14} />
@@ -631,7 +810,9 @@ function DriverTracking() {
 
                 <div>
                   <span></span>
-                  GPS Tracking Active
+                  {trackedLocations > 0
+                    ? "GPS Tracking Active"
+                    : "Location unavailable"}
                 </div>
 
                 <strong>
@@ -639,7 +820,7 @@ function DriverTracking() {
                 </strong>
 
                 <small>
-                  Based on shipment tracking data
+                  {loadError || "Refreshes every 15 seconds"}
                 </small>
 
               </div>
@@ -956,7 +1137,9 @@ function DriverTracking() {
 
                             <Gauge size={14} />
 
-                            Not available
+                            {driver.speedKmh == null
+                              ? "Not available"
+                              : `${driver.speedKmh.toFixed(1)} km/h`}
 
                           </div>
 

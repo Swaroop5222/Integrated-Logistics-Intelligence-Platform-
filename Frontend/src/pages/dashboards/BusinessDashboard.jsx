@@ -1,11 +1,9 @@
 import {
   ArrowRight,
-  Bell,
   CheckCircle2,
   Package,
   Truck,
   AlertTriangle,
-  FileText,
   Plus,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -13,7 +11,11 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../api";
 import "./BusinessDashboard.css";
 
-const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
+const TERMINAL_STATUSES = [
+  "DELIVERED",
+  "FAILED_DELIVERY",
+  "CANCELLED",
+];
 
 const normalizeStatus = (status) =>
   String(status || "")
@@ -30,7 +32,7 @@ const getStatusLabel = (status) => {
     IN_TRANSIT: "In Transit",
     OUT_FOR_DELIVERY: "Out for Delivery",
     DELIVERED: "Delivered",
-    FAILED_DELIVERY: "Delayed",
+    FAILED_DELIVERY: "Failed Delivery",
     CANCELLED: "Cancelled",
   };
 
@@ -52,10 +54,7 @@ const getStatusClass = (status) => {
     return "picked-up";
   }
 
-  if (
-    normalized === "FAILED_DELIVERY" ||
-    normalized === "DELAYED"
-  ) {
+  if (normalized === "FAILED_DELIVERY") {
     return "delayed";
   }
 
@@ -101,9 +100,7 @@ const getUserName = (user) =>
   "Business";
 
 const getTrackingNumber = (shipment) =>
-  shipment?.trackingNumber ||
-  shipment?.trackingId ||
-  `Shipment #${shipment?.id || ""}`;
+  shipment?.trackingNumber || "";
 
 const getRouteText = (shipment) => {
   const sender =
@@ -122,7 +119,7 @@ const getRouteText = (shipment) => {
     return `${sender} → ${receiver}`;
   }
 
-  return "Route information unavailable";
+  return "";
 };
 
 const getCustomerName = (shipment) => {
@@ -130,9 +127,7 @@ const getCustomerName = (shipment) => {
     shipment?.customer?.name ||
     shipment?.customer?.fullName ||
     shipment?.customerName ||
-    shipment?.businessClient?.name ||
-    shipment?.businessClient?.fullName ||
-    "Customer"
+    "Not assigned"
   );
 };
 
@@ -189,6 +184,15 @@ function BusinessDashboard() {
 
         if (!mounted) {
           return;
+        }
+
+        const failedRouteResults = routeResults.filter(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.status !== 404
+        );
+        if (failedRouteResults.length > 0) {
+          throw failedRouteResults[0].reason;
         }
 
         const routeList = routeResults
@@ -260,26 +264,13 @@ function BusinessDashboard() {
     );
   }, [shipments]);
 
-  const delayedShipments = useMemo(() => {
+  const failedDeliveryShipments = useMemo(() => {
     return shipments.filter((shipment) => {
       const status = normalizeStatus(
         shipment?.status
       );
 
-      return (
-        status === "FAILED_DELIVERY" ||
-        status === "DELAYED"
-      );
-    });
-  }, [shipments]);
-
-  const activeShipments = useMemo(() => {
-    return shipments.filter((shipment) => {
-      const status = normalizeStatus(
-        shipment?.status
-      );
-
-      return !TERMINAL_STATUSES.includes(status);
+      return status === "FAILED_DELIVERY";
     });
   }, [shipments]);
 
@@ -312,67 +303,6 @@ function BusinessDashboard() {
    * ACTIVE DRIVERS
    * ==========================================
    */
-
-  const activeDriverIds = useMemo(() => {
-    const ids = new Set();
-
-    activeRoutes.forEach((route) => {
-      if (route?.assignedOperatorId) {
-        ids.add(
-          String(route.assignedOperatorId)
-        );
-      }
-    });
-
-    activeShipments.forEach((shipment) => {
-      const operatorId =
-        shipment?.assignedOperatorId ||
-        shipment?.assignedOperator?.id;
-
-      if (operatorId) {
-        ids.add(String(operatorId));
-      }
-    });
-
-    return ids;
-  }, [activeRoutes, activeShipments]);
-
-  /*
-   * ==========================================
-   * TOTAL ROUTE DISTANCE
-   * ==========================================
-   */
-
-  const totalDistance = useMemo(() => {
-    let total = 0;
-
-    activeRoutes.forEach((route) => {
-      const distance = Number(
-        route?.distanceKm
-      );
-
-      if (Number.isFinite(distance)) {
-        total += distance;
-      }
-    });
-
-    return total;
-  }, [activeRoutes]);
-
-  /*
-   * ==========================================
-   * DELIVERY PERCENTAGE
-   * ==========================================
-   */
-
-  const deliveryPercentage =
-    totalShipments > 0
-      ? Math.round(
-          (deliveredShipments.length /
-            totalShipments) *
-            100
-        )
-      : 0;
 
   /*
    * ==========================================
@@ -623,15 +553,6 @@ function BusinessDashboard() {
 
           <div className="business-header-right">
 
-            <Link
-              to="/business/notifications"
-              className="business-notification"
-            >
-              <Bell size={17} />
-
-              <span />
-            </Link>
-
             <div className="business-profile">
 
               <div className="business-avatar">
@@ -720,6 +641,7 @@ function BusinessDashboard() {
             STAT CARDS
             ====================================== */}
 
+        {!error && (
         <div className="business-stats">
 
           {/* TOTAL */}
@@ -815,17 +737,17 @@ function BusinessDashboard() {
 
           </Link>
 
-          {/* DELAYED */}
+          {/* FAILED DELIVERY */}
 
           <Link
-            to="/business/delay-analysis"
+            to="/business/shipment-history"
             className="business-stat-card"
           >
 
             <div className="business-stat-top">
 
               <span>
-                DELAYED
+                FAILED DELIVERY
               </span>
 
               <div className="stat-icon pink">
@@ -837,21 +759,24 @@ function BusinessDashboard() {
             <strong>
               {loading
                 ? "..."
-                : delayedShipments.length}
+                : failedDeliveryShipments.length}
             </strong>
 
             <small>
-              Failed / delayed shipments
+              Failed delivery shipments
             </small>
 
           </Link>
 
         </div>
+        )}
 
         {/* ======================================
             SHIPMENTS + PERFORMANCE
             ====================================== */}
 
+        {!error && (
+        <>
         <div className="business-content-grid">
 
           {/* ====================================
@@ -938,16 +863,13 @@ function BusinessDashboard() {
                             {trackingNumber}
                           </strong>
 
-                          <span>
-                            {shipment?.referenceId ||
-                              "Reference unavailable"}
-                          </span>
+                          {shipment?.referenceId && (
+                            <span>{shipment.referenceId}</span>
+                          )}
 
-                          <small>
-                            {getRouteText(
-                              shipment
-                            )}
-                          </small>
+                          {getRouteText(shipment) && (
+                            <small>{getRouteText(shipment)}</small>
+                          )}
 
                         </div>
 
@@ -1009,140 +931,6 @@ function BusinessDashboard() {
 
           </section>
 
-          {/* ====================================
-              DELIVERY PERFORMANCE
-              ==================================== */}
-
-          <section className="business-panel">
-
-            <div className="business-panel-header">
-
-              <div>
-
-                <span>
-                  PERFORMANCE
-                </span>
-
-                <h2>
-                  Delivery Performance
-                </h2>
-
-              </div>
-
-              <Link
-                to="/business/delivery-performance"
-                className="small-view-link"
-              >
-                Details
-              </Link>
-
-            </div>
-
-            <div className="performance-score">
-
-              <div
-                className="score-circle"
-                style={{
-                  background: `conic-gradient(
-                    #42d8a1 0deg,
-                    #42d8a1 ${
-                      deliveryPercentage * 3.6
-                    }deg,
-                    #242a38 ${
-                      deliveryPercentage * 3.6
-                    }deg,
-                    #242a38 360deg
-                  )`,
-                }}
-              >
-
-                <div>
-
-                  <strong>
-                    {loading
-                      ? "..."
-                      : `${deliveryPercentage}%`}
-                  </strong>
-
-                  <span>
-                    Delivered
-                  </span>
-
-                </div>
-
-              </div>
-
-              <div className="performance-summary">
-
-                <div>
-
-                  <span>
-                    Delivered shipments
-                  </span>
-
-                  <strong>
-                    {deliveredShipments.length}
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Delayed shipments
-                  </span>
-
-                  <strong>
-                    {delayedShipments.length}
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Avg. delivery time
-                  </span>
-
-                  <strong>
-                    Data unavailable
-                  </strong>
-
-                </div>
-
-              </div>
-
-            </div>
-
-            <div className="performance-progress">
-
-              <div className="progress-header">
-
-                <span>
-                  Delivered / Total
-                </span>
-
-                <strong>
-                  {deliveryPercentage}%
-                </strong>
-
-              </div>
-
-              <div className="progress-track">
-
-                <div
-                  className="progress-value"
-                  style={{
-                    width: `${deliveryPercentage}%`,
-                  }}
-                />
-
-              </div>
-
-            </div>
-
-          </section>
-
         </div>
 
         {/* ======================================
@@ -1150,120 +938,6 @@ function BusinessDashboard() {
             ====================================== */}
 
         <div className="business-analytics-grid">
-
-          {/* ====================================
-              DELAY ANALYSIS
-              ==================================== */}
-
-          <section className="business-panel analytics-panel">
-
-            <div className="business-panel-header">
-
-              <div>
-
-                <span>
-                  ANALYTICS
-                </span>
-
-                <h2>
-                  Delay Analysis
-                </h2>
-
-              </div>
-
-              <Link
-                to="/business/delay-analysis"
-                className="small-view-link"
-              >
-                View analysis
-              </Link>
-
-            </div>
-
-            <div className="delay-content">
-
-              <div className="delay-main-number">
-
-                <strong>
-                  {delayedShipments.length}
-                </strong>
-
-                <span>
-                  Delayed shipments
-                </span>
-
-              </div>
-
-              <div className="delay-bars">
-
-                <div className="delay-bar-row">
-
-                  <span>
-                    Traffic
-                  </span>
-
-                  <div className="delay-track">
-                    <div
-                      className="delay-value"
-                      style={{
-                        width: "0%",
-                      }}
-                    />
-                  </div>
-
-                  <strong>
-                    —
-                  </strong>
-
-                </div>
-
-                <div className="delay-bar-row">
-
-                  <span>
-                    Weather
-                  </span>
-
-                  <div className="delay-track">
-                    <div
-                      className="delay-value"
-                      style={{
-                        width: "0%",
-                      }}
-                    />
-                  </div>
-
-                  <strong>
-                    —
-                  </strong>
-
-                </div>
-
-                <div className="delay-bar-row">
-
-                  <span>
-                    Operations
-                  </span>
-
-                  <div className="delay-track">
-                    <div
-                      className="delay-value"
-                      style={{
-                        width: "0%",
-                      }}
-                    />
-                  </div>
-
-                  <strong>
-                    —
-                  </strong>
-
-                </div>
-
-              </div>
-
-            </div>
-
-          </section>
 
           {/* ====================================
               LOGISTICS
@@ -1304,46 +978,6 @@ function BusinessDashboard() {
 
                 <strong>
                   {activeRoutes.length}
-                </strong>
-
-              </div>
-
-              <div className="logistics-item">
-
-                <span>
-                  ACTIVE DRIVERS
-                </span>
-
-                <strong>
-                  {activeDriverIds.size}
-                </strong>
-
-              </div>
-
-              <div className="logistics-item">
-
-                <span>
-                  TOTAL DISTANCE
-                </span>
-
-                <strong>
-                  {totalDistance > 0
-                    ? `${totalDistance.toFixed(
-                        1
-                      )} km`
-                    : "Data unavailable"}
-                </strong>
-
-              </div>
-
-              <div className="logistics-item">
-
-                <span>
-                  ROUTE EFFICIENCY
-                </span>
-
-                <strong>
-                  Data unavailable
                 </strong>
 
               </div>
@@ -1392,7 +1026,7 @@ function BusinessDashboard() {
                     fontSize: "9px",
                   }}
                 >
-                  Customer data unavailable.
+                  No customer shipment records.
                 </div>
 
               ) : (
@@ -1434,10 +1068,6 @@ function BusinessDashboard() {
 
                       </div>
 
-                      <b>
-                        —
-                      </b>
-
                     </div>
 
                   )
@@ -1450,6 +1080,8 @@ function BusinessDashboard() {
           </section>
 
         </div>
+        </>
+        )}
 
         {/* ======================================
             REPORT BANNER
@@ -1468,8 +1100,7 @@ function BusinessDashboard() {
             </h2>
 
             <p>
-              Generate shipment, delivery, route
-              and delay reports for your business.
+              Generate a shipment report from your current shipment records.
             </p>
 
           </div>

@@ -99,6 +99,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public List<UserDto> getCustomers() {
+        return userRepository.findByRole(Role.CUSTOMER)
+                .stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));

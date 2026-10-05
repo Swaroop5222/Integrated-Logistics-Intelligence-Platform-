@@ -3,6 +3,7 @@ package com.shiptrack.service;
 import com.shiptrack.entity.Forecast;
 import com.shiptrack.entity.Route;
 import com.shiptrack.entity.Shipment;
+import com.shiptrack.dto.ShipmentResponse;
 import com.shiptrack.enums.ShipmentStatus;
 import com.shiptrack.exception.ResourceNotFoundException;
 import com.shiptrack.repository.ForecastRepository;
@@ -20,19 +21,23 @@ public class ForecastService {
     private final ShipmentRepository shipmentRepository;
     private final RouteRepository routeRepository;
     private final ForecastRepository forecastRepository;
+    private final ShipmentService shipmentService;
 
     public ForecastService(
             ShipmentRepository shipmentRepository,
             RouteRepository routeRepository,
-            ForecastRepository forecastRepository) {
+            ForecastRepository forecastRepository,
+            ShipmentService shipmentService) {
         this.shipmentRepository = shipmentRepository;
         this.routeRepository = routeRepository;
         this.forecastRepository = forecastRepository;
+        this.shipmentService = shipmentService;
     }
 
     @Transactional
     public Forecast generateForecast(Long shipmentId) {
 
+        shipmentService.getShipmentById(shipmentId);
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
@@ -97,13 +102,18 @@ public class ForecastService {
     }
 
     public List<Forecast> getForecastsForShipment(Long shipmentId) {
-
+        shipmentService.getShipmentById(shipmentId);
         return forecastRepository
                 .findByShipmentIdOrderByCreatedAtDesc(shipmentId);
     }
 
     public List<Forecast> listAll() {
-
-        return forecastRepository.findAll();
+        List<Long> shipmentIds = shipmentService.getAllShipments().stream()
+                .map(ShipmentResponse::getId)
+                .toList();
+        if (shipmentIds.isEmpty()) {
+            return List.of();
+        }
+        return forecastRepository.findByShipmentIdInOrderByCreatedAtDesc(shipmentIds);
     }
 }

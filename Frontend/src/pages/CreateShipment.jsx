@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import "./CreateShipment.css";
 import { apiRequest } from "../api";
 
 function CreateShipment() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editingId = searchParams.get("edit");
+  const [user, setUser] = useState(null);
   const [operators, setOperators] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
   const [operatorLoadError, setOperatorLoadError] = useState("");
-
-  // Get currently logged-in user
-  const user = JSON.parse(
-    localStorage.getItem("shiptrackUser") || "null"
-  );
+  const [customerLoadError, setCustomerLoadError] = useState("");
+  const [shipmentLoading, setShipmentLoading] = useState(Boolean(editingId));
 
   const userName =
     user?.fullName ||
@@ -41,15 +43,8 @@ function CreateShipment() {
 
     packageType: "Box",
     weight: "",
-    length: "",
-    width: "",
-    height: "",
     quantity: "1",
-
-    pickupDate: "",
-    expectedDelivery: "",
-    priority: "Standard",
-    transportMode: "Road",
+    customerId: "",
     assignedOperatorId: "",
   });
 
@@ -59,26 +54,107 @@ function CreateShipment() {
   useEffect(() => {
     let active = true;
 
-    const loadOperators = async () => {
-      try {
-        const data = await apiRequest("/api/users/operators");
-        if (active) {
-          setOperators(Array.isArray(data) ? data : []);
-        }
-      } catch (error) {
-        if (active) {
-          console.error("Load logistics operators error:", error);
-          setOperatorLoadError(`Unable to load logistics operators: ${error.message}`);
-        }
+    async function loadFormData() {
+      const [userResult, operatorsResult, customersResult] =
+        await Promise.allSettled([
+          apiRequest("/api/users/me"),
+          apiRequest("/api/users/operators"),
+          apiRequest("/api/users/customers"),
+        ]);
+      if (!active) return;
+
+      if (userResult.status === "fulfilled") {
+        setUser(userResult.value);
+      } else {
+        console.error("Load business profile error:", userResult.reason);
+        setOperatorLoadError(
+          `Unable to load business profile: ${userResult.reason.message}`
+        );
       }
-    };
 
-    loadOperators();
+      if (operatorsResult.status === "fulfilled") {
+        setOperators(
+          Array.isArray(operatorsResult.value) ? operatorsResult.value : []
+        );
+      } else {
+        console.error("Load logistics operators error:", operatorsResult.reason);
+        setOperatorLoadError(
+          `Unable to load logistics operators: ${operatorsResult.reason.message}`
+        );
+      }
 
+      if (customersResult.status === "fulfilled") {
+        if (!Array.isArray(customersResult.value)) {
+          console.error(
+            "Unexpected response while loading customer accounts:",
+            customersResult.value
+          );
+          setCustomerLoadError(
+            "Unable to load customer accounts: unexpected API response."
+          );
+        } else {
+          setCustomers(
+            customersResult.value.filter(
+              (customer) =>
+                customer?.id != null && customer?.role === "CUSTOMER"
+            )
+          );
+        }
+      } else {
+        console.error(
+          "Load customer accounts error:",
+          customersResult.reason
+        );
+        setCustomerLoadError(
+          `Unable to load customer accounts: ${customersResult.reason.message}`
+        );
+      }
+      setCustomersLoading(false);
+    }
+
+    loadFormData();
     return () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!editingId) return undefined;
+    let active = true;
+
+    async function loadShipment() {
+      try {
+        const shipment = await apiRequest(`/api/shipments/${editingId}`);
+        if (!active) return;
+
+        setFormData((previous) => ({
+          ...previous,
+          referenceId: shipment.referenceId || "",
+          senderName: shipment.senderName || "",
+          senderPhone: shipment.senderPhone || "",
+          senderAddress: shipment.senderAddress || "",
+          receiverName: shipment.receiverName || "",
+          receiverPhone: shipment.receiverPhone || "",
+          receiverAddress: shipment.receiverAddress || "",
+          packageType: shipment.packageDescription || "",
+          weight: shipment.packageWeightKg ?? "",
+          quantity: "",
+          customerId: shipment.customerId ?? "",
+          assignedOperatorId: shipment.assignedOperatorId || "",
+        }));
+      } catch (error) {
+        console.error("Failed to load shipment for editing:", error);
+        if (active) setMessage(`Error: ${error.message}`);
+      } finally {
+        if (active) setShipmentLoading(false);
+      }
+    }
+
+    loadShipment();
+    return () => {
+      active = false;
+    };
+  }, [editingId]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -93,14 +169,7 @@ function CreateShipment() {
     e.preventDefault();
 
     try {
-      const loggedInUser = JSON.parse(
-        localStorage.getItem("shiptrackUser") || "null"
-      );
-
-      if (
-        !loggedInUser?.id ||
-        loggedInUser.role !== "BUSINESS_CLIENT"
-      ) {
+      if (!user?.id || user.role !== "BUSINESS_CLIENT") {
         alert(
           "Please login as a Business Client before creating a shipment."
         );
@@ -108,28 +177,38 @@ function CreateShipment() {
         return;
       }
 
+      if (
+        !formData.senderName.trim() ||
+        !formData.senderPhone.trim() ||
+        !formData.senderAddress.trim() ||
+        !formData.receiverName.trim() ||
+        !formData.receiverPhone.trim() ||
+        !formData.receiverAddress.trim()
+      ) {
+        setMessage("Error: Complete all required sender and receiver fields.");
+        return;
+      }
+
+      if (
+        formData.weight !== "" &&
+        (!Number.isFinite(Number(formData.weight)) ||
+          Number(formData.weight) <= 0)
+      ) {
+        setMessage("Error: Package weight must be greater than zero.");
+        return;
+      }
+
+      const selectedCustomer = customers.find(
+        (customer) => String(customer.id) === String(formData.customerId)
+      );
+      if (!selectedCustomer) {
+        setMessage("Error: Select a Customer account.");
+        return;
+      }
+
       setIsSubmitting(true);
 
-      const fullSenderAddress = [
-        formData.senderAddress.trim(),
-        formData.senderCity.trim(),
-        formData.senderState.trim(),
-        formData.senderPincode.trim(),
-      ]
-        .filter(Boolean)
-        .join(", ") || formData.senderAddress.trim();
-
-      const fullReceiverAddress = [
-        formData.receiverAddress.trim(),
-        formData.receiverCity.trim(),
-        formData.receiverState.trim(),
-        formData.receiverPincode.trim(),
-      ]
-        .filter(Boolean)
-        .join(", ") || formData.receiverAddress.trim();
-
       const payload = {
-        customerId: null,
         assignedOperatorId: formData.assignedOperatorId
           ? Number(formData.assignedOperatorId)
           : null,
@@ -137,23 +216,31 @@ function CreateShipment() {
 
         senderName: formData.senderName.trim(),
         senderPhone: formData.senderPhone.trim(),
-        senderAddress: fullSenderAddress,
+        senderAddress: formData.senderAddress.trim(),
 
         receiverName: formData.receiverName.trim(),
         receiverPhone: formData.receiverPhone.trim(),
-        receiverAddress: fullReceiverAddress,
+        receiverAddress: formData.receiverAddress.trim(),
 
-        packageDescription: `${formData.packageType} x${formData.quantity}`,
-        packageWeightKg: Number(formData.weight) || 1,
+        packageDescription:
+          editingId || !formData.quantity
+          ? formData.packageType.trim()
+          : `${formData.packageType.trim()} x${formData.quantity}`,
+        packageWeightKg:
+          formData.weight === "" ? null : Number(formData.weight),
+        customerId: Number(selectedCustomer.id),
       };
 
-      const data = await apiRequest("/api/shipments", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      const data = await apiRequest(
+        editingId ? `/api/shipments/${editingId}` : "/api/shipments",
+        {
+          method: editingId ? "PUT" : "POST",
+          body: JSON.stringify(payload),
+        }
+      );
 
       setMessage(
-        `Shipment created successfully! Tracking ID: ${data.trackingNumber}`
+        `${editingId ? "Shipment updated" : "Shipment created"} successfully! Tracking number: ${data.trackingNumber}`
       );
 
       setTimeout(() => {
@@ -351,6 +438,12 @@ function CreateShipment() {
           </div>
         )}
 
+        {customerLoadError && (
+          <div className="create-success">
+            {customerLoadError}
+          </div>
+        )}
+
 
         {/* FORM */}
 
@@ -470,40 +563,6 @@ function CreateShipment() {
 
               </div>
 
-              <div className="form-field">
-
-                <label>
-                  Email
-                </label>
-
-                <input
-                  type="email"
-                  name="senderEmail"
-                  value={formData.senderEmail}
-                  onChange={handleChange}
-                  placeholder="sender@example.com"
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Pincode
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="text"
-                  name="senderPincode"
-                  value={formData.senderPincode}
-                  onChange={handleChange}
-                  placeholder="500001"
-                  required
-                />
-
-              </div>
-
               <div className="form-field full-width">
 
                 <label>
@@ -517,42 +576,6 @@ function CreateShipment() {
                   value={formData.senderAddress}
                   onChange={handleChange}
                   placeholder="Enter complete pickup address"
-                  required
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  City
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="text"
-                  name="senderCity"
-                  value={formData.senderCity}
-                  onChange={handleChange}
-                  placeholder="Hyderabad"
-                  required
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  State
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="text"
-                  name="senderState"
-                  value={formData.senderState}
-                  onChange={handleChange}
-                  placeholder="Telangana"
                   required
                 />
 
@@ -625,40 +648,6 @@ function CreateShipment() {
 
               </div>
 
-              <div className="form-field">
-
-                <label>
-                  Email
-                </label>
-
-                <input
-                  type="email"
-                  name="receiverEmail"
-                  value={formData.receiverEmail}
-                  onChange={handleChange}
-                  placeholder="receiver@example.com"
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Pincode
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="text"
-                  name="receiverPincode"
-                  value={formData.receiverPincode}
-                  onChange={handleChange}
-                  placeholder="560001"
-                  required
-                />
-
-              </div>
-
               <div className="form-field full-width">
 
                 <label>
@@ -672,42 +661,6 @@ function CreateShipment() {
                   value={formData.receiverAddress}
                   onChange={handleChange}
                   placeholder="Enter complete delivery address"
-                  required
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  City
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="text"
-                  name="receiverCity"
-                  value={formData.receiverCity}
-                  onChange={handleChange}
-                  placeholder="Bangalore"
-                  required
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  State
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="text"
-                  name="receiverState"
-                  value={formData.receiverState}
-                  onChange={handleChange}
-                  placeholder="Karnataka"
                   required
                 />
 
@@ -736,7 +689,7 @@ function CreateShipment() {
                 </h2>
 
                 <p>
-                  Enter package dimensions and weight.
+                  Enter the package description and weight.
                 </p>
               </div>
 
@@ -747,19 +700,17 @@ function CreateShipment() {
               <div className="form-field">
 
                 <label>
-                  Package Type
+                  Package Description
                 </label>
 
-                <select
+                <input
+                  type="text"
                   name="packageType"
                   value={formData.packageType}
                   onChange={handleChange}
-                >
-                  <option value="Box">Box</option>
-                  <option value="Envelope">Envelope</option>
-                  <option value="Pallet">Pallet</option>
-                  <option value="Crate">Crate</option>
-                </select>
+                  placeholder="Describe the package"
+                  required
+                />
 
               </div>
 
@@ -783,191 +734,17 @@ function CreateShipment() {
 
                 <label>
                   Weight (kg)
-                  <span>*</span>
                 </label>
 
                 <input
                   type="number"
-                  min="0"
+                  min="0.1"
                   step="0.1"
                   name="weight"
                   value={formData.weight}
                   onChange={handleChange}
                   placeholder="e.g. 5.5"
-                  required
                 />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Length (cm)
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  name="length"
-                  value={formData.length}
-                  onChange={handleChange}
-                  placeholder="40"
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Width (cm)
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  name="width"
-                  value={formData.width}
-                  onChange={handleChange}
-                  placeholder="30"
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Height (cm)
-                </label>
-
-                <input
-                  type="number"
-                  min="0"
-                  name="height"
-                  value={formData.height}
-                  onChange={handleChange}
-                  placeholder="20"
-                />
-
-              </div>
-
-            </div>
-
-          </section>
-
-
-          {/* DELIVERY */}
-
-          <section className="form-section">
-
-            <div className="form-section-header">
-
-              <div className="section-number">
-                05
-              </div>
-
-              <div>
-                <span>DELIVERY</span>
-
-                <h2>
-                  Delivery Details
-                </h2>
-
-                <p>
-                  Select delivery preferences and schedule.
-                </p>
-              </div>
-
-            </div>
-
-            <div className="form-grid">
-
-              <div className="form-field">
-
-                <label>
-                  Pickup Date
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="date"
-                  name="pickupDate"
-                  value={formData.pickupDate}
-                  onChange={handleChange}
-                  required
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Expected Delivery
-                  <span>*</span>
-                </label>
-
-                <input
-                  type="date"
-                  name="expectedDelivery"
-                  value={formData.expectedDelivery}
-                  onChange={handleChange}
-                  required
-                />
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Delivery Priority
-                </label>
-
-                <select
-                  name="priority"
-                  value={formData.priority}
-                  onChange={handleChange}
-                >
-                  <option value="Standard">
-                    Standard
-                  </option>
-
-                  <option value="Express">
-                    Express
-                  </option>
-
-                  <option value="Urgent">
-                    Urgent
-                  </option>
-                </select>
-
-              </div>
-
-              <div className="form-field">
-
-                <label>
-                  Transport Mode
-                </label>
-
-                <select
-                  name="transportMode"
-                  value={formData.transportMode}
-                  onChange={handleChange}
-                >
-                  <option value="Road">
-                    Road
-                  </option>
-
-                  <option value="Rail">
-                    Rail
-                  </option>
-
-                  <option value="Air">
-                    Air
-                  </option>
-
-                  <option value="Sea">
-                    Sea
-                  </option>
-                </select>
 
               </div>
 
@@ -982,7 +759,7 @@ function CreateShipment() {
             <div className="form-section-header">
 
               <div className="section-number">
-                06
+                05
               </div>
 
               <div>
@@ -992,14 +769,52 @@ function CreateShipment() {
                   Logistics Operator
                 </h2>
 
-                <p>
-                  Assign an operator to manage this shipment.
-                </p>
+                <p>Assign a customer account and an operator to this shipment.</p>
               </div>
 
             </div>
 
             <div className="form-grid one-column">
+
+              <div className="form-field">
+                <label htmlFor="customerId">
+                  Assign Customer Account
+                  <span>*</span>
+                </label>
+
+                <select
+                  id="customerId"
+                  name="customerId"
+                  value={formData.customerId}
+                  onChange={handleChange}
+                  required
+                  disabled={
+                    customersLoading ||
+                    customerLoadError !== "" ||
+                    customers.length === 0
+                  }
+                >
+                  <option value="">
+                    {customersLoading
+                      ? "Loading customer accounts..."
+                      : customerLoadError
+                        ? "Customer accounts unavailable"
+                        : customers.length === 0
+                          ? "No customer accounts available"
+                          : "Select a customer"}
+                  </option>
+                  {customers.map((customer) => (
+                    <option
+                      key={customer.id}
+                      value={customer.id}
+                    >
+                      {customer.fullName}
+                      {customer.email ? ` (${customer.email})` : ""}
+                    </option>
+                  ))}
+                </select>
+
+              </div>
 
               <div className="form-field">
 
@@ -1051,9 +866,9 @@ function CreateShipment() {
             <button
               type="submit"
               className="submit-shipment-btn"
-              disabled={isSubmitting}
+              disabled={isSubmitting || shipmentLoading || !user}
               style={
-                isSubmitting
+                isSubmitting || shipmentLoading || !user
                   ? {
                       opacity: 0.7,
                       cursor: "not-allowed",
@@ -1062,8 +877,8 @@ function CreateShipment() {
               }
             >
               {isSubmitting
-                ? "Creating Shipment..."
-                : "Create Shipment →"}
+                ? (editingId ? "Updating Shipment..." : "Creating Shipment...")
+                : (editingId ? "Update Shipment →" : "Create Shipment →")}
             </button>
 
           </div>

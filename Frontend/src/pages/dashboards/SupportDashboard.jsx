@@ -487,11 +487,18 @@ function SupportDashboard() {
       setTrackingLoading(true);
       try {
         const normalizedQuery = query.toLowerCase();
-        let shipment = shipments.find((item) =>
-          [item?.trackingNumber, item?.referenceId]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase() === normalizedQuery)
+        let shipment = shipments.find(
+          (item) =>
+            String(item?.trackingNumber || "").toLowerCase() ===
+            normalizedQuery
         );
+        if (!shipment) {
+          shipment = shipments.find(
+            (item) =>
+              String(item?.referenceId || "").toLowerCase() ===
+              normalizedQuery
+          );
+        }
 
         if (!shipment) {
           shipment = await apiRequest(
@@ -1673,7 +1680,7 @@ function SupportDashboard() {
                       {trackingDetails.shipment.referenceId && <div><span>Reference</span><strong>{trackingDetails.shipment.referenceId}</strong></div>}
                       <div><span>Route</span><strong>{getRoute(trackingDetails.shipment) || "Not provided"}</strong></div>
                       <div><span>Current status</span><strong>{formatStatus(getStatus(trackingDetails.shipment))}</strong></div>
-                      <div><span>Current location</span><strong>{trackingDetails.tracking.currentLocation?.locationName || "No location recorded"}</strong></div>
+                      <div><span>Current location</span><strong>{trackingDetails.tracking.currentLocation?.locationName || (trackingDetails.tracking.currentLocation?.latitude != null && trackingDetails.tracking.currentLocation?.longitude != null ? `${trackingDetails.tracking.currentLocation.latitude}, ${trackingDetails.tracking.currentLocation.longitude}` : "No location recorded")}</strong></div>
                       {forecastsByShipment.get(String(trackingDetails.shipment.id))?.predictedDeliveryTime && (
                         <div>
                           <span>Saved predicted delivery</span>

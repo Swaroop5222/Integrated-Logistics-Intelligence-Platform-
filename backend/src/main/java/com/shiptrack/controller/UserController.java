@@ -3,6 +3,7 @@ package com.shiptrack.controller;
 import com.shiptrack.dto.UserDto;
 import com.shiptrack.entity.User;
 import com.shiptrack.service.UserService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +31,12 @@ public class UserController {
     @GetMapping("/operators")
     public ResponseEntity<List<UserDto>> getLogisticsOperators() {
         return ResponseEntity.ok(userService.getLogisticsOperators());
+    }
+
+    @GetMapping("/customers")
+    @PreAuthorize("hasAnyRole('BUSINESS_CLIENT', 'ADMINISTRATOR')")
+    public ResponseEntity<List<UserDto>> getCustomers() {
+        return ResponseEntity.ok(userService.getCustomers());
     }
 
     @GetMapping("/{id}")

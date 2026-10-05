@@ -130,9 +130,8 @@ public class LiveTrackingServiceImpl implements LiveTrackingService {
         checkVisibility(shipment, currentUser);
 
         ShipmentLocation location = locationRepository.findFirstByShipmentIdOrderByRecordedAtDesc(shipmentId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "No live location has been recorded for shipment ID: " + shipmentId));
-        return mapLocation(location);
+                .orElse(null);
+        return location == null ? null : mapLocation(location);
     }
 
     @Override

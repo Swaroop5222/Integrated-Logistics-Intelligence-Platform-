@@ -6,6 +6,7 @@ import com.shiptrack.enums.Role;
 import com.shiptrack.enums.ShipmentStatus;
 import com.shiptrack.repository.ProofOfDeliveryRepository;
 import com.shiptrack.repository.ForecastRepository;
+import com.shiptrack.repository.NotificationRepository;
 import com.shiptrack.repository.RouteRepository;
 import com.shiptrack.repository.ShipmentLocationRepository;
 import com.shiptrack.repository.ShipmentRepository;
@@ -42,6 +43,9 @@ class ShipmentServiceTest {
     private ForecastRepository forecastRepository;
 
     @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
     private ShipmentLocationRepository shipmentLocationRepository;
 
     @Autowired
@@ -72,6 +76,7 @@ class ShipmentServiceTest {
         // Delete child records before shipments
         proofOfDeliveryRepository.deleteAll();
         forecastRepository.deleteAll();
+        notificationRepository.deleteAll();
         routeRepository.deleteAll();
         shipmentStatusHistoryRepository.deleteAll();
         shipmentLocationRepository.deleteAll();

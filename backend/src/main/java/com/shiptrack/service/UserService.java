@@ -10,6 +10,7 @@ public interface UserService {
     UserDto registerUser(RegisterRequest request);
     UserDto getCurrentUser();
     List<UserDto> getLogisticsOperators();
+    List<UserDto> getCustomers();
     User getUserByEmail(String email);
     User getUserById(Long id);
 }

@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 import com.shiptrack.repository.ProofOfDeliveryRepository;
 import com.shiptrack.repository.ForecastRepository;
+import com.shiptrack.repository.NotificationRepository;
 import com.shiptrack.repository.RouteRepository;
 import com.shiptrack.repository.ShipmentRepository;
 import static org.junit.jupiter.api.Assertions.*;
@@ -38,6 +39,8 @@ private RouteRepository routeRepository;
 
 @Autowired
 private ShipmentRepository shipmentRepository;
+@Autowired
+private NotificationRepository notificationRepository;
     @Autowired
     private UserService userService;
 
@@ -51,6 +54,7 @@ void setUp() {
     routeRepository.deleteAll();
     shipmentStatusHistoryRepository.deleteAll();
     shipmentLocationRepository.deleteAll();
+    notificationRepository.deleteAll();
     shipmentRepository.deleteAll();
     userRepository.deleteAll();
 }

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api";
 
 import {
@@ -48,8 +48,13 @@ function OperatorShipmentTracking() {
   const [selectedTracking, setSelectedTracking] =
     useState(null);
 
+  const [trackingLoading, setTrackingLoading] =
+    useState(false);
+
   const [locationHistory, setLocationHistory] =
     useState([]);
+
+  const trackingRequestId = useRef(0);
 
   const [searchTerm, setSearchTerm] =
     useState("");
@@ -337,66 +342,76 @@ function OperatorShipmentTracking() {
       return;
     }
 
+    const requestId = ++trackingRequestId.current;
     setSelectedShipment(shipment);
     setSelectedLocation(null);
     setSelectedTracking(null);
     setLocationHistory([]);
+    setTrackingLoading(true);
+    setError("");
 
-    try {
-      const location = await apiRequest(
-        "/api/shipments/" +
-          shipment.id +
-          "/location"
+    const shipmentPath = `/api/shipments/${shipment.id}`;
+    const [locationResult, trackingResult, historyResult] =
+      await Promise.allSettled([
+        apiRequest(`${shipmentPath}/location`),
+        apiRequest(`${shipmentPath}/tracking`),
+        apiRequest(`${shipmentPath}/location-history`),
+      ]);
+
+    if (requestId !== trackingRequestId.current) {
+      return;
+    }
+
+    const tracking =
+      trackingResult.status === "fulfilled"
+        ? trackingResult.value
+        : null;
+    const location =
+      locationResult.status === "fulfilled"
+        ? locationResult.value
+        : null;
+    const history =
+      historyResult.status === "fulfilled"
+        ? historyResult.value
+        : null;
+    const historyData = Array.isArray(history)
+      ? history
+      : history?.content ||
+        history?.data ||
+        history?.locationHistory ||
+        tracking?.locationHistory ||
+        [];
+
+    setSelectedTracking(tracking);
+    setSelectedLocation(
+      location || tracking?.currentLocation || null
+    );
+    setLocationHistory(
+      Array.isArray(historyData) ? historyData : []
+    );
+
+    const failedRequests = [
+      locationResult,
+      trackingResult,
+      historyResult,
+    ].filter(
+      (result) =>
+        result.status === "rejected" &&
+        result.reason?.status !== 404
+    );
+    if (failedRequests.length > 0) {
+      const requestError = failedRequests[0].reason;
+      console.error(
+        `Failed to load tracking details for shipment ${shipment.id}:`,
+        failedRequests.map((result) => result.reason)
       );
-
-      setSelectedLocation(location);
-    } catch (err) {
-      console.log(
-        "Location information unavailable:",
-        err?.message
+      setError(
+        requestError?.message ||
+          "Some tracking details could not be loaded."
       );
     }
 
-    try {
-      const tracking = await apiRequest(
-        "/api/shipments/" +
-          shipment.id +
-          "/tracking"
-      );
-
-      setSelectedTracking(tracking);
-    } catch (err) {
-      console.log(
-        "Tracking information unavailable:",
-        err?.message
-      );
-    }
-
-    try {
-      const history = await apiRequest(
-        "/api/shipments/" +
-          shipment.id +
-          "/location-history"
-      );
-
-      const historyData = Array.isArray(history)
-        ? history
-        : history?.content ||
-          history?.data ||
-          history?.locationHistory ||
-          [];
-
-      setLocationHistory(
-        Array.isArray(historyData)
-          ? historyData
-          : []
-      );
-    } catch (err) {
-      console.log(
-        "Location history unavailable:",
-        err?.message
-      );
-    }
+    setTrackingLoading(false);
   };
 
   /* =========================================================
@@ -1386,9 +1401,12 @@ function OperatorShipmentTracking() {
                               <MapPin size={14} />
 
                               {isSelected
-                                ? getLocationText(
-                                    selectedLocation
-                                  )
+                                ? trackingLoading
+                                  ? "Loading..."
+                                  : getLocationText(
+                                      selectedLocation ||
+                                        selectedTracking?.currentLocation
+                                    )
                                 : "Click View"}
 
                             </div>

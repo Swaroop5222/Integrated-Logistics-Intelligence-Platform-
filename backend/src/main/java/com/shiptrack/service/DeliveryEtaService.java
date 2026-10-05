@@ -24,17 +24,20 @@ public class DeliveryEtaService {
     private final LiveTrackingService liveTrackingService;
     private final MapsService mapsService;
     private final RouteRepository routeRepository;
+    private final ShipmentService shipmentService;
 
     public DeliveryEtaService(
             ShipmentRepository shipmentRepository,
             LiveTrackingService liveTrackingService,
             MapsService mapsService,
-            RouteRepository routeRepository) {
+            RouteRepository routeRepository,
+            ShipmentService shipmentService) {
 
         this.shipmentRepository = shipmentRepository;
         this.liveTrackingService = liveTrackingService;
         this.mapsService = mapsService;
         this.routeRepository = routeRepository;
+        this.shipmentService = shipmentService;
     }
 
     @Transactional
@@ -53,6 +56,7 @@ public class DeliveryEtaService {
                     "Delay values cannot be negative");
         }
 
+        shipmentService.getShipmentById(shipmentId);
         Shipment shipment = shipmentRepository.findById(shipmentId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
@@ -86,10 +90,22 @@ public class DeliveryEtaService {
         ShipmentLocationResponse current =
                 liveTrackingService.getCurrentLocation(shipmentId);
 
+        Double originLatitude = current != null
+                ? current.getLatitude()
+                : route == null ? null : route.getOriginLatitude();
+        Double originLongitude = current != null
+                ? current.getLongitude()
+                : route == null ? null : route.getOriginLongitude();
+
+        if (originLatitude == null || originLongitude == null) {
+            throw new IllegalArgumentException(
+                    "A live location or saved route origin coordinates are required to calculate ETA");
+        }
+
         MapsService.Coordinates origin =
                 new MapsService.Coordinates(
-                        current.getLatitude(),
-                        current.getLongitude());
+                        originLatitude,
+                        originLongitude);
 
         MapsService.Coordinates destinationCoordinates =
                 new MapsService.Coordinates(

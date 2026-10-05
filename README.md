@@ -33,6 +33,7 @@ npm run dev
 ```
 
 Frontend runs on `http://localhost:5173`.
+Set `VITE_API_BASE_URL` before starting Vite to use a different backend URL; the default is `http://localhost:8080`.
 
 ## Main API endpoints
 
@@ -46,5 +47,20 @@ Frontend runs on `http://localhost:5173`.
 - `PATCH /api/shipments/{id}/status`
 - `PATCH /api/shipments/{id}/cancel`
 - `GET /api/shipments/{id}/history`
+- `GET /api/shipments/{id}/location` and `/location-history`
+- `PATCH /api/shipments/{id}/location`
+- `POST /api/shipments/{id}/eta`
+- `POST /api/routes/shipment/{id}/calculate`
+- `GET /api/routes/shipment/{id}`
+- `POST /api/forecasts/generate?shipmentId={id}`
+- `GET /api/forecasts/shipment/{id}`
+- `POST` and `GET /api/shipments/{id}/pod`
+- `GET /api/notifications`
+- `PATCH /api/notifications/{id}/read` and `/read-all`
+
+Forecast responses include a limited shipment summary rather than serializing
+the full shipment and its related user accounts.
+The current-location endpoint returns `204 No Content` when no location has
+been recorded; ETA calculations then use saved route origin coordinates.
 
 The React login stores the JWT and uses it as a Bearer token for protected shipment requests.
