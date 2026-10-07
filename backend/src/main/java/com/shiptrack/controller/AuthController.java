@@ -1,8 +1,10 @@
 package com.shiptrack.controller;
 
 import com.shiptrack.dto.AuthResponse;
+import com.shiptrack.dto.ForgotPasswordRequest;
 import com.shiptrack.dto.LoginRequest;
 import com.shiptrack.dto.RegisterRequest;
+import com.shiptrack.dto.ResetPasswordRequest;
 import com.shiptrack.dto.UserDto;
 import com.shiptrack.entity.User;
 import com.shiptrack.security.JwtUtils;
@@ -43,5 +45,17 @@ public class AuthController {
         String token = jwtUtils.generateToken(user.getId(), user.getEmail(), user.getRole().name());
 
         return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getEmail(), user.getRole()));
+    }
+
+    @PostMapping({"/api/auth/forgot-password", "/auth/forgot-password"})
+    public ResponseEntity<Void> sendPasswordResetOtp(@RequestBody ForgotPasswordRequest request) {
+        userService.sendPasswordResetOtp(request.getEmail());
+        return ResponseEntity.accepted().build();
+    }
+
+    @PostMapping({"/api/auth/reset-password", "/auth/reset-password"})
+    public ResponseEntity<Void> resetPassword(@RequestBody ResetPasswordRequest request) {
+        userService.resetPassword(request.getEmail(), request.getOtp(), request.getNewPassword());
+        return ResponseEntity.noContent().build();
     }
 }

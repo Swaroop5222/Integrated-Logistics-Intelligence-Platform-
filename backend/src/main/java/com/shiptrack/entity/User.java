@@ -32,6 +32,15 @@ public class User {
     @Column(name = "register_id", unique = true, length = 20)
     private String registerId;
 
+    @Column(name = "password_reset_otp_hash", length = 255)
+    private String passwordResetOtpHash;
+
+    @Column(name = "password_reset_otp_expires_at")
+    private LocalDateTime passwordResetOtpExpiresAt;
+
+    @Column(name = "password_reset_otp_attempts")
+    private Integer passwordResetOtpAttempts;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -107,6 +116,30 @@ public class User {
 
     public void setRegisterId(String registerId) {
         this.registerId = registerId;
+    }
+
+    public String getPasswordResetOtpHash() {
+        return passwordResetOtpHash;
+    }
+
+    public void setPasswordResetOtpHash(String passwordResetOtpHash) {
+        this.passwordResetOtpHash = passwordResetOtpHash;
+    }
+
+    public LocalDateTime getPasswordResetOtpExpiresAt() {
+        return passwordResetOtpExpiresAt;
+    }
+
+    public void setPasswordResetOtpExpiresAt(LocalDateTime passwordResetOtpExpiresAt) {
+        this.passwordResetOtpExpiresAt = passwordResetOtpExpiresAt;
+    }
+
+    public int getPasswordResetOtpAttempts() {
+        return passwordResetOtpAttempts == null ? 0 : passwordResetOtpAttempts;
+    }
+
+    public void setPasswordResetOtpAttempts(int passwordResetOtpAttempts) {
+        this.passwordResetOtpAttempts = passwordResetOtpAttempts;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -13,4 +13,6 @@ public interface UserService {
     List<UserDto> getCustomers();
     User getUserByEmail(String email);
     User getUserById(Long id);
+    void sendPasswordResetOtp(String email);
+    void resetPassword(String email, String otp, String newPassword);
 }
