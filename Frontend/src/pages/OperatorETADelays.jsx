@@ -250,8 +250,8 @@ function OperatorETADelays() {
                       ),
                     },
                     trafficCondition: "MODERATE",
-                    weatherDelayHours: 0,
-                    routeChangeDelayHours: 0,
+                    weatherDelayHours: 0.25,
+                    routeChangeDelayHours: 0.10,
                   }),
                 }
               );
