@@ -192,7 +192,6 @@ function getCurrentLocation(locationData) {
   const location =
     locationData?.currentLocation ??
     locationData?.location ??
-    locationData ??
     null;
 
   if (!location) {
@@ -201,14 +200,6 @@ function getCurrentLocation(locationData) {
 
   if (typeof location === "string") {
     return location;
-  }
-
-  if (
-    Number.isFinite(Number(location.latitude)) &&
-    Number.isFinite(Number(location.longitude))
-  ) {
-    return location.locationName ||
-      `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}`;
   }
 
   return (
@@ -226,8 +217,6 @@ function CustomerDashboard() {
     useState(null);
   const [locationData, setLocationData] =
     useState(null);
-  const [notifications, setNotifications] =
-    useState([]);
 
   const [loading, setLoading] = useState(true);
   const [locationLoading, setLocationLoading] =
@@ -244,11 +233,9 @@ function CustomerDashboard() {
       const [
         userResponse,
         shipmentResponse,
-        notificationResponse,
       ] = await Promise.all([
         apiRequest("/api/users/me"),
         apiRequest("/api/shipments"),
-        apiRequest("/api/notifications"),
       ]);
 
       const backendShipments =
@@ -256,11 +243,6 @@ function CustomerDashboard() {
 
       setUser(userResponse);
       setShipments(backendShipments);
-      setNotifications(
-        Array.isArray(notificationResponse)
-          ? notificationResponse
-          : []
-      );
 
       /*
        * Select an actual active shipment.
@@ -308,7 +290,6 @@ function CustomerDashboard() {
       setShipments([]);
       setSelectedShipment(null);
       setLocationData(null);
-      setNotifications([]);
     } finally {
       setLoading(false);
     }
@@ -373,12 +354,10 @@ function CustomerDashboard() {
 
         setLocationData(response);
       } catch (err) {
-        if (err?.status !== 404) {
-          console.error(
-            "Location API Error:",
-            err
-          );
-        }
+        console.error(
+          "Location API Error:",
+          err
+        );
 
         setLocationData(null);
       } finally {
@@ -481,10 +460,6 @@ function CustomerDashboard() {
 
   const currentLocation =
     getCurrentLocation(locationData);
-  const unreadNotificationCount = notifications.filter(
-    (notification) => !notification.read
-  ).length;
-  const latestNotification = notifications[0] ?? null;
 
   if (loading) {
     return (
@@ -816,14 +791,12 @@ function CustomerDashboard() {
                 marginTop: "22px",
               }}
             >
-                {unreadNotificationCount}
+              Data unavailable
             </h2>
 
             <p>
-                {unreadNotificationCount === 1
-                  ? "Unread notification"
-                  : "Unread notifications"}
-              </p>
+              Notification data not provided
+            </p>
 
           </Link>
 
@@ -1262,7 +1235,7 @@ function CustomerDashboard() {
                 to="/notifications"
                 className="notification-number"
               >
-                {unreadNotificationCount} unread
+                Data unavailable
               </Link>
 
             </div>
@@ -1276,19 +1249,17 @@ function CustomerDashboard() {
               <div>
 
                 <strong>
-                  {latestNotification?.title ||
-                    "No shipment updates yet"}
+                  Notification data unavailable
                 </strong>
 
                 <p>
-                  {latestNotification?.message ||
-                    "Shipment status updates will appear here."}
+                  The current backend does not
+                  provide a notification API for
+                  the customer dashboard.
                 </p>
 
                 <span>
-                  {latestNotification
-                    ? formatDateTime(latestNotification.createdAt)
-                    : "Updates are based on shipment history"}
+                  Backend endpoint unavailable
                 </span>
 
               </div>
