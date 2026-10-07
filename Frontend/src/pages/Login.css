@@ -635,6 +635,20 @@
   cursor: pointer;
 }
 
+.auth-message {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-message.success {
+  color: #86efac;
+}
+
+.auth-message.error {
+  color: #fca5a5;
+}
+
 
 /* =====================================================
    SUBMIT

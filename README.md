@@ -21,6 +21,10 @@ cd backend
 Backend runs on `http://localhost:8080`.
 
 Update `backend/src/main/resources/application.properties` if your PostgreSQL username/password differs.
+Password reset sends a 6-digit email code that expires after 10 minutes. Configure
+`MAIL_HOST` and `MAIL_PORT`; when required by your provider, also set
+`MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_SMTP_AUTH=true`, and
+`MAIL_SMTP_STARTTLS_ENABLE=true`.
 
 ### Frontend
 
@@ -39,6 +43,8 @@ Set `VITE_API_BASE_URL` before starting Vite to use a different backend URL; the
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
 - `POST /api/shipments`
 - `GET /api/shipments`
 - `GET /api/shipments/{id}`
