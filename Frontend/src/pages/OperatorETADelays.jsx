@@ -170,6 +170,7 @@ function OperatorETADelays() {
   const [etaRecords, setEtaRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -300,7 +301,7 @@ function OperatorETADelays() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   /*
    * Only shipments that are currently active.
@@ -671,6 +672,14 @@ function OperatorETADelays() {
               <span></span>
               System Live
             </div>
+            <button
+              type="button"
+              className="eta-refresh-button"
+              onClick={() => setRefreshKey((value) => value + 1)}
+              disabled={loading}
+  >
+              {loading ? "Refreshing..." : "Refresh ETA"}
+            </button>
 
             <button
               type="button"
