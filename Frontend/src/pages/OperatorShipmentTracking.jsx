@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../api";
 
 import {
@@ -7,7 +7,6 @@ import {
   Bell,
   CheckCircle2,
   Clock3,
-  MapPin,
   Navigation,
   Package,
   Radio,
@@ -39,23 +38,6 @@ function OperatorShipmentTracking() {
 
   const [shipments, setShipments] = useState([]);
 
-  const [selectedShipment, setSelectedShipment] =
-    useState(null);
-
-  const [selectedLocation, setSelectedLocation] =
-    useState(null);
-
-  const [selectedTracking, setSelectedTracking] =
-    useState(null);
-
-  const [trackingLoading, setTrackingLoading] =
-    useState(false);
-
-  const [locationHistory, setLocationHistory] =
-    useState([]);
-
-  const trackingRequestId = useRef(0);
-
   const [searchTerm, setSearchTerm] =
     useState("");
 
@@ -68,32 +50,22 @@ function OperatorShipmentTracking() {
   const [refreshing, setRefreshing] =
     useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [selectedShipment, setSelectedShipment] =
+    useState(null);
 
   const [statusModalOpen, setStatusModalOpen] =
     useState(false);
 
-  const [locationModalOpen, setLocationModalOpen] =
-    useState(false);
-
-  const [statusForm, setStatusForm] =
-    useState({
-      status: "",
-      remarks: "",
-    });
-
-  const [locationForm, setLocationForm] =
-    useState({
-      latitude: "",
-      longitude: "",
-    });
+  const [statusForm, setStatusForm] = useState({
+    status: "",
+    remarks: "",
+  });
 
   const [savingStatus, setSavingStatus] =
     useState(false);
 
-  const [savingLocation, setSavingLocation] =
-    useState(false);
+  const [error, setError] =
+    useState("");
 
   /* =========================================================
      HELPERS
@@ -134,23 +106,9 @@ function OperatorShipmentTracking() {
   };
 
   const getStatusClass = (status) => {
-    switch (normalizeStatus(status)) {
-      case "DELIVERED":
-        return "status-delivered";
-
-      case "CANCELLED":
-      case "FAILED_DELIVERY":
-        return "status-delay";
-
-      case "IN_TRANSIT":
-      case "PICKED_UP":
-      case "OUT_FOR_DELIVERY":
-        return "status-in-transit";
-
-      case "CREATED":
-      default:
-        return "status-in-transit";
-    }
+    return normalizeStatus(status)
+      .toLowerCase()
+      .replaceAll("_", "-");
   };
 
   const getProgress = (status) => {
@@ -199,36 +157,6 @@ function OperatorShipmentTracking() {
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
-
-  const getLocationText = (location) => {
-    if (!location) {
-      return "Location unavailable";
-    }
-
-    const currentLocation =
-      location.currentLocation || location;
-
-    const latitude =
-      currentLocation.latitude ??
-      currentLocation.lat;
-
-    const longitude =
-      currentLocation.longitude ??
-      currentLocation.lng;
-
-    if (
-      latitude === undefined ||
-      latitude === null ||
-      longitude === undefined ||
-      longitude === null
-    ) {
-      return "Location unavailable";
-    }
-
-    return `${Number(latitude).toFixed(5)}, ${Number(
-      longitude
-    ).toFixed(5)}`;
   };
 
   const getCustomerName = (shipment) => {
@@ -332,89 +260,6 @@ function OperatorShipmentTracking() {
   };
 
   /* =========================================================
-     LOAD SELECTED SHIPMENT DETAILS
-     ========================================================= */
-
-  const loadShipmentDetails = async (
-    shipment
-  ) => {
-    if (!shipment?.id) {
-      return;
-    }
-
-    const requestId = ++trackingRequestId.current;
-    setSelectedShipment(shipment);
-    setSelectedLocation(null);
-    setSelectedTracking(null);
-    setLocationHistory([]);
-    setTrackingLoading(true);
-    setError("");
-
-    const shipmentPath = `/api/shipments/${shipment.id}`;
-    const [locationResult, trackingResult, historyResult] =
-      await Promise.allSettled([
-        apiRequest(`${shipmentPath}/location`),
-        apiRequest(`${shipmentPath}/tracking`),
-        apiRequest(`${shipmentPath}/location-history`),
-      ]);
-
-    if (requestId !== trackingRequestId.current) {
-      return;
-    }
-
-    const tracking =
-      trackingResult.status === "fulfilled"
-        ? trackingResult.value
-        : null;
-    const location =
-      locationResult.status === "fulfilled"
-        ? locationResult.value
-        : null;
-    const history =
-      historyResult.status === "fulfilled"
-        ? historyResult.value
-        : null;
-    const historyData = Array.isArray(history)
-      ? history
-      : history?.content ||
-        history?.data ||
-        history?.locationHistory ||
-        tracking?.locationHistory ||
-        [];
-
-    setSelectedTracking(tracking);
-    setSelectedLocation(
-      location || tracking?.currentLocation || null
-    );
-    setLocationHistory(
-      Array.isArray(historyData) ? historyData : []
-    );
-
-    const failedRequests = [
-      locationResult,
-      trackingResult,
-      historyResult,
-    ].filter(
-      (result) =>
-        result.status === "rejected" &&
-        result.reason?.status !== 404
-    );
-    if (failedRequests.length > 0) {
-      const requestError = failedRequests[0].reason;
-      console.error(
-        `Failed to load tracking details for shipment ${shipment.id}:`,
-        failedRequests.map((result) => result.reason)
-      );
-      setError(
-        requestError?.message ||
-          "Some tracking details could not be loaded."
-      );
-    }
-
-    setTrackingLoading(false);
-  };
-
-  /* =========================================================
      INITIAL LOAD
      ========================================================= */
 
@@ -427,34 +272,8 @@ function OperatorShipmentTracking() {
      ========================================================= */
 
   const refreshAll = async () => {
-    const previousSelectedId =
-      selectedShipment?.id;
-
     await loadShipments(true);
-
-    if (previousSelectedId) {
-      try {
-        const refreshedShipment =
-          await apiRequest(
-            "/api/shipments/" +
-              previousSelectedId
-          );
-
-        await loadShipmentDetails(
-          refreshedShipment
-        );
-      } catch (err) {
-        console.log(
-          "Could not refresh selected shipment:",
-          err?.message
-        );
-      }
-    }
   };
-
-  /* =========================================================
-     STATUS MODAL
-     ========================================================= */
 
   const openStatusModal = (shipment) => {
     if (!shipment?.id) {
@@ -462,50 +281,30 @@ function OperatorShipmentTracking() {
     }
 
     setSelectedShipment(shipment);
-
     setStatusForm({
-      status:
-        normalizeStatus(shipment?.status) ||
-        "CREATED",
+      status: normalizeStatus(shipment.status) || "CREATED",
       remarks: "",
     });
-
     setError("");
     setStatusModalOpen(true);
   };
 
   const closeStatusModal = () => {
-    if (savingStatus) {
-      return;
-    }
-
+    if (savingStatus) return;
     setStatusModalOpen(false);
-
-    setStatusForm({
-      status: "",
-      remarks: "",
-    });
+    setStatusForm({ status: "", remarks: "" });
   };
-
-  /* =========================================================
-     UPDATE STATUS
-     ========================================================= */
 
   const updateStatus = async (event) => {
     event.preventDefault();
-
-    if (!selectedShipment?.id) {
-      return;
-    }
+    if (!selectedShipment?.id) return;
 
     try {
       setSavingStatus(true);
       setError("");
 
       await apiRequest(
-        "/api/shipments/" +
-          selectedShipment.id +
-          "/status",
+        `/api/shipments/${selectedShipment.id}/status`,
         {
           method: "PATCH",
           body: JSON.stringify({
@@ -518,262 +317,13 @@ function OperatorShipmentTracking() {
       );
 
       setStatusModalOpen(false);
-
-      setStatusForm({
-        status: "",
-        remarks: "",
-      });
-
+      setStatusForm({ status: "", remarks: "" });
       await loadShipments(true);
-
-      try {
-        const updatedShipment =
-          await apiRequest(
-            "/api/shipments/" +
-              selectedShipment.id
-          );
-
-        await loadShipmentDetails(
-          updatedShipment
-        );
-      } catch (err) {
-        console.log(
-          "Could not reload shipment:",
-          err?.message
-        );
-      }
     } catch (err) {
-      console.error(
-        "Status update failed:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to update shipment status."
-      );
+      console.error("Status update failed:", err);
+      setError(err?.message || "Unable to update shipment status.");
     } finally {
       setSavingStatus(false);
-    }
-  };
-
-  /* =========================================================
-     LOCATION MODAL
-     ========================================================= */
-
-  const openLocationModal = async (
-    shipment
-  ) => {
-    if (!shipment?.id) {
-      return;
-    }
-
-    setSelectedShipment(shipment);
-    setError("");
-
-    /*
-     * First load the latest location for
-     * the selected shipment.
-     */
-    try {
-      const response = await apiRequest(
-        "/api/shipments/" +
-          shipment.id +
-          "/location"
-      );
-
-      const current =
-        response?.currentLocation ||
-        null;
-
-      const latitude =
-        current?.latitude ??
-        current?.lat;
-
-      const longitude =
-        current?.longitude ??
-        current?.lng;
-
-      setLocationForm({
-        latitude:
-          latitude !== undefined &&
-          latitude !== null
-            ? String(latitude)
-            : "",
-
-        longitude:
-          longitude !== undefined &&
-          longitude !== null
-            ? String(longitude)
-            : "",
-      });
-    } catch (err) {
-      console.log(
-        "No existing location:",
-        err?.message
-      );
-
-      setLocationForm({
-        latitude: "",
-        longitude: "",
-      });
-    }
-
-    setLocationModalOpen(true);
-  };
-
-  const closeLocationModal = () => {
-    if (savingLocation) {
-      return;
-    }
-
-    setLocationModalOpen(false);
-
-    setLocationForm({
-      latitude: "",
-      longitude: "",
-    });
-  };
-
-  /* =========================================================
-     UPDATE LOCATION
-     ========================================================= */
-
-  const updateLocation = async (event) => {
-    event.preventDefault();
-
-    if (!selectedShipment?.id) {
-      return;
-    }
-
-    const latitude = Number(
-      locationForm.latitude
-    );
-
-    const longitude = Number(
-      locationForm.longitude
-    );
-
-    if (
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude)
-    ) {
-      setError(
-        "Latitude and longitude must be valid numbers."
-      );
-
-      return;
-    }
-
-    if (
-      latitude < -90 ||
-      latitude > 90
-    ) {
-      setError(
-        "Latitude must be between -90 and 90."
-      );
-
-      return;
-    }
-
-    if (
-      longitude < -180 ||
-      longitude > 180
-    ) {
-      setError(
-        "Longitude must be between -180 and 180."
-      );
-
-      return;
-    }
-
-    try {
-      setSavingLocation(true);
-      setError("");
-
-      await apiRequest(
-        "/api/shipments/" +
-          selectedShipment.id +
-          "/location",
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            latitude,
-            longitude,
-          }),
-        }
-      );
-
-      /*
-       * Close modal only after successful
-       * backend update.
-       */
-      setLocationModalOpen(false);
-
-      setLocationForm({
-        latitude: "",
-        longitude: "",
-      });
-
-      /*
-       * Refresh shipment list.
-       */
-      await loadShipments(true);
-
-      /*
-       * Reload selected shipment location
-       * and tracking information.
-       */
-      try {
-        const updatedShipment =
-          await apiRequest(
-            "/api/shipments/" +
-              selectedShipment.id
-          );
-
-        await loadShipmentDetails(
-          updatedShipment
-        );
-      } catch (err) {
-        console.log(
-          "Could not reload updated shipment:",
-          err?.message
-        );
-
-        /*
-         * Even if the shipment detail endpoint
-         * is unavailable, load the location again.
-         */
-        try {
-          const updatedLocation =
-            await apiRequest(
-              "/api/shipments/" +
-                selectedShipment.id +
-                "/location"
-            );
-
-          setSelectedLocation(
-            updatedLocation
-          );
-        } catch (locationErr) {
-          console.log(
-            "Could not reload location:",
-            locationErr?.message
-          );
-        }
-      }
-    } catch (err) {
-      console.error(
-        "Location update failed:",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Unable to update shipment location."
-      );
-    } finally {
-      setSavingLocation(false);
     }
   };
 
@@ -1004,7 +554,7 @@ function OperatorShipmentTracking() {
                 </h1>
 
                 <p>
-                  Monitor and update your assigned shipments.
+                  Monitor your assigned shipments.
                 </p>
 
               </div>
@@ -1264,14 +814,12 @@ function OperatorShipmentTracking() {
               <thead>
 
                 <tr>
-                  <th>SHIPMENT</th>
-                  <th>CUSTOMER</th>
-                  <th>ROUTE</th>
-                  <th>CURRENT LOCATION</th>
-                  <th>PROGRESS</th>
-                  <th>UPDATED</th>
-                  <th>STATUS</th>
-                  <th>ACTIONS</th>
+                <th>SHIPMENT</th>
+                <th>CUSTOMER</th>
+                <th>ROUTE</th>
+                <th>PROGRESS</th>
+                <th>UPDATED</th>
+                <th>STATUS</th>
                 </tr>
 
               </thead>
@@ -1283,7 +831,7 @@ function OperatorShipmentTracking() {
                   <tr>
 
                     <td
-                      colSpan="8"
+                      colSpan="6"
                       style={{
                         textAlign: "center",
                         padding: "35px",
@@ -1300,7 +848,7 @@ function OperatorShipmentTracking() {
                   <tr>
 
                     <td
-                      colSpan="8"
+                      colSpan="6"
                       style={{
                         textAlign: "center",
                         padding: "35px",
@@ -1322,22 +870,10 @@ function OperatorShipmentTracking() {
                           shipment?.status
                         );
 
-                      const isSelected =
-                        selectedShipment?.id ===
-                        shipment?.id;
-
                       return (
 
                         <tr
                           key={shipment.id}
-                          style={
-                            isSelected
-                              ? {
-                                  background:
-                                    "rgba(255,255,255,0.025)",
-                                }
-                              : undefined
-                          }
                         >
 
                           {/* SHIPMENT */}
@@ -1392,27 +928,6 @@ function OperatorShipmentTracking() {
 
                           </td>
 
-                          {/* LOCATION */}
-
-                          <td>
-
-                            <div className="shipment-location">
-
-                              <MapPin size={14} />
-
-                              {isSelected
-                                ? trackingLoading
-                                  ? "Loading..."
-                                  : getLocationText(
-                                      selectedLocation ||
-                                        selectedTracking?.currentLocation
-                                    )
-                                : "Click View"}
-
-                            </div>
-
-                          </td>
-
                           {/* PROGRESS */}
 
                           <td>
@@ -1456,57 +971,21 @@ function OperatorShipmentTracking() {
                           {/* STATUS */}
 
                           <td>
-
-                            <span
-                              className={`shipment-status ${getStatusClass(
-                                shipment?.status
-                              )}`}
-                            >
-
-                              <i></i>
-
-                              {getDisplayStatus(
-                                shipment?.status
-                              )}
-
-                            </span>
-
-                          </td>
-
-                          {/* ACTIONS */}
-
-                          <td>
-
                             <div
                               style={{
                                 display: "flex",
+                                alignItems: "center",
                                 gap: "6px",
                               }}
                             >
-
-                              {/* VIEW */}
-
-                              <button
-                                type="button"
-                                className="shipment-icon-button"
-                                style={{
-                                  width: "32px",
-                                  height: "32px",
-                                }}
-                                title="View tracking"
-                                onClick={() =>
-                                  loadShipmentDetails(
-                                    shipment
-                                  )
-                                }
+                              <span
+                                className={`shipment-status ${getStatusClass(
+                                  shipment?.status
+                                )}`}
                               >
-                                <Navigation
-                                  size={14}
-                                />
-                              </button>
-
-                              {/* STATUS */}
-
+                                <i></i>
+                                {getDisplayStatus(shipment?.status)}
+                              </span>
                               <button
                                 type="button"
                                 className="shipment-icon-button"
@@ -1515,38 +994,15 @@ function OperatorShipmentTracking() {
                                   height: "32px",
                                 }}
                                 title="Update status"
-                                onClick={() =>
-                                  openStatusModal(
-                                    shipment
-                                  )
-                                }
+                                aria-label={`Update status for ${
+                                  shipment?.trackingNumber ||
+                                  `shipment ${shipment?.id}`
+                                }`}
+                                onClick={() => openStatusModal(shipment)}
                               >
-                                <CheckCircle2
-                                  size={14}
-                                />
+                                <CheckCircle2 size={14} />
                               </button>
-
-                              {/* LOCATION */}
-
-                              <button
-                                type="button"
-                                className="shipment-icon-button"
-                                style={{
-                                  width: "32px",
-                                  height: "32px",
-                                }}
-                                title="Update location"
-                                onClick={() =>
-                                  openLocationModal(
-                                    shipment
-                                  )
-                                }
-                              >
-                                <MapPin size={14} />
-                              </button>
-
                             </div>
-
                           </td>
 
                         </tr>
@@ -1619,536 +1075,182 @@ function OperatorShipmentTracking() {
 
           </div>
 
-          <div className="shipment-bottom-card">
-
-            <div className="bottom-icon purple-bottom">
-              <MapPin size={19} />
-            </div>
-
-            <div>
-
-              <span>
-                Location Records
-              </span>
-
-              <strong>
-                {locationHistory.length}
-              </strong>
-
-              <p>
-                Selected shipment history
-              </p>
-
-            </div>
-
-          </div>
-
         </section>
 
         {/* ================= STATUS MODAL ================= */}
 
-        {statusModalOpen &&
-          selectedShipment && (
-
+        {statusModalOpen && selectedShipment && (
+          <div
+            className="shipment-modal-backdrop"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 100,
+            }}
+          >
             <div
-              className="shipment-modal-backdrop"
               style={{
-                position: "fixed",
-                inset: 0,
-                background:
-                  "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 100,
+                width: "min(480px, 92vw)",
+                background: "#11151f",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "15px",
+                padding: "22px",
               }}
             >
-
               <div
                 style={{
-                  width: "min(480px, 92vw)",
-                  background: "#11151f",
-                  border:
-                    "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "15px",
-                  padding: "22px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "20px",
                 }}
               >
-
-                <div
+                <div>
+                  <span
+                    style={{
+                      color: "#ff8757",
+                      fontSize: "9px",
+                      fontWeight: 800,
+                    }}
+                  >
+                    UPDATE SHIPMENT
+                  </span>
+                  <h2
+                    style={{
+                      margin: "6px 0 4px",
+                      fontSize: "19px",
+                    }}
+                  >
+                    Update Status
+                  </h2>
+                  <p
+                    style={{
+                      margin: 0,
+                      color: "#6e7585",
+                      fontSize: "11px",
+                    }}
+                  >
+                    {selectedShipment.trackingNumber ||
+                      `Shipment #${selectedShipment.id}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeStatusModal}
+                  disabled={savingStatus}
                   style={{
-                    display: "flex",
-                    justifyContent:
-                      "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: "20px",
+                    border: 0,
+                    background: "transparent",
+                    color: "#8d94a4",
+                    cursor: "pointer",
                   }}
                 >
-
-                  <div>
-
-                    <span
-                      style={{
-                        color: "#ff8757",
-                        fontSize: "9px",
-                        fontWeight: 800,
-                      }}
-                    >
-                      UPDATE SHIPMENT
-                    </span>
-
-                    <h2
-                      style={{
-                        margin:
-                          "6px 0 4px",
-                        fontSize: "19px",
-                      }}
-                    >
-                      Update Status
-                    </h2>
-
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6e7585",
-                        fontSize: "11px",
-                      }}
-                    >
-                      {selectedShipment.trackingNumber ||
-                        `Shipment #${selectedShipment.id}`}
-                    </p>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      closeStatusModal
-                    }
-                    disabled={savingStatus}
-                    style={{
-                      border: 0,
-                      background:
-                        "transparent",
-                      color: "#8d94a4",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <X size={18} />
-                  </button>
-
-                </div>
-
-                <form
-                  onSubmit={updateStatus}
-                >
-
-                  <label
-                    style={{
-                      display: "block",
-                      color: "#9ca3b1",
-                      fontSize: "11px",
-                      marginBottom: "16px",
-                    }}
-                  >
-
-                    Shipment Status
-
-                    <select
-                      value={
-                        statusForm.status
-                      }
-                      onChange={(event) =>
-                        setStatusForm(
-                          (current) => ({
-                            ...current,
-                            status:
-                              event.target
-                                .value,
-                          })
-                        )
-                      }
-                      required
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        marginTop: "7px",
-                        padding: "11px",
-                        borderRadius: "8px",
-                        background:
-                          "#0b0e17",
-                        color: "#fff",
-                        border:
-                          "1px solid rgba(255,255,255,0.08)",
-                      }}
-                    >
-
-                      {STATUS_OPTIONS.map(
-                        (status) => (
-                          <option
-                            key={status}
-                            value={status}
-                          >
-                            {getDisplayStatus(
-                              status
-                            )}
-                          </option>
-                        )
-                      )}
-
-                    </select>
-
-                  </label>
-
-                  <label
-                    style={{
-                      display: "block",
-                      color: "#9ca3b1",
-                      fontSize: "11px",
-                    }}
-                  >
-
-                    Remarks
-
-                    <textarea
-                      rows="4"
-                      value={
-                        statusForm.remarks
-                      }
-                      onChange={(event) =>
-                        setStatusForm(
-                          (current) => ({
-                            ...current,
-                            remarks:
-                              event.target
-                                .value,
-                          })
-                        )
-                      }
-                      placeholder="Optional remarks"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        marginTop: "7px",
-                        padding: "11px",
-                        resize: "vertical",
-                        borderRadius: "8px",
-                        background:
-                          "#0b0e17",
-                        color: "#fff",
-                        border:
-                          "1px solid rgba(255,255,255,0.08)",
-                      }}
-                    />
-
-                  </label>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent:
-                        "flex-end",
-                      gap: "8px",
-                      marginTop: "18px",
-                    }}
-                  >
-
-                    <button
-                      type="button"
-                      onClick={
-                        closeStatusModal
-                      }
-                      disabled={savingStatus}
-                      className="shipment-map-button"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="submit"
-                      disabled={savingStatus}
-                      className="shipment-map-button"
-                    >
-                      {savingStatus
-                        ? "Updating..."
-                        : "Update Status"}
-                    </button>
-
-                  </div>
-
-                </form>
-
+                  <X size={18} />
+                </button>
               </div>
 
-            </div>
-
-          )}
-
-        {/* ================= LOCATION MODAL ================= */}
-
-        {locationModalOpen &&
-          selectedShipment && (
-
-            <div
-              className="shipment-modal-backdrop"
-              style={{
-                position: "fixed",
-                inset: 0,
-                background:
-                  "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 100,
-              }}
-            >
-
-              <div
-                style={{
-                  width: "min(480px, 92vw)",
-                  background: "#11151f",
-                  border:
-                    "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "15px",
-                  padding: "22px",
-                }}
-              >
-
-                <div
+              <form onSubmit={updateStatus}>
+                <label
                   style={{
-                    display: "flex",
-                    justifyContent:
-                      "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: "20px",
+                    display: "block",
+                    color: "#9ca3b1",
+                    fontSize: "11px",
+                    marginBottom: "16px",
                   }}
                 >
-
-                  <div>
-
-                    <span
-                      style={{
-                        color: "#3cddb0",
-                        fontSize: "9px",
-                        fontWeight: 800,
-                      }}
-                    >
-                      SHIPMENT LOCATION
-                    </span>
-
-                    <h2
-                      style={{
-                        margin:
-                          "6px 0 4px",
-                        fontSize: "19px",
-                      }}
-                    >
-                      Update Location
-                    </h2>
-
-                    <p
-                      style={{
-                        margin: 0,
-                        color: "#6e7585",
-                        fontSize: "11px",
-                      }}
-                    >
-                      {selectedShipment.trackingNumber ||
-                        `Shipment #${selectedShipment.id}`}
-                    </p>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      closeLocationModal
+                  Shipment Status
+                  <select
+                    value={statusForm.status}
+                    onChange={(event) =>
+                      setStatusForm((current) => ({
+                        ...current,
+                        status: event.target.value,
+                      }))
                     }
-                    disabled={
-                      savingLocation
-                    }
+                    required
                     style={{
-                      border: 0,
-                      background:
-                        "transparent",
-                      color: "#8d94a4",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <X size={18} />
-                  </button>
-
-                </div>
-
-                <form
-                  onSubmit={updateLocation}
-                >
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "1fr 1fr",
-                      gap: "10px",
-                    }}
-                  >
-
-                    <label
-                      style={{
-                        color: "#9ca3b1",
-                        fontSize: "11px",
-                      }}
-                    >
-
-                      Latitude
-
-                      <input
-                        type="number"
-                        step="any"
-                        min="-90"
-                        max="90"
-                        required
-                        value={
-                          locationForm.latitude
-                        }
-                        onChange={(event) =>
-                          setLocationForm(
-                            (current) => ({
-                              ...current,
-                              latitude:
-                                event.target
-                                  .value,
-                            })
-                          )
-                        }
-                        placeholder="17.4065"
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          marginTop: "7px",
-                          padding: "11px",
-                          borderRadius: "8px",
-                          background:
-                            "#0b0e17",
-                          color: "#fff",
-                          border:
-                            "1px solid rgba(255,255,255,0.08)",
-                          boxSizing:
-                            "border-box",
-                        }}
-                      />
-
-                    </label>
-
-                    <label
-                      style={{
-                        color: "#9ca3b1",
-                        fontSize: "11px",
-                      }}
-                    >
-
-                      Longitude
-
-                      <input
-                        type="number"
-                        step="any"
-                        min="-180"
-                        max="180"
-                        required
-                        value={
-                          locationForm.longitude
-                        }
-                        onChange={(event) =>
-                          setLocationForm(
-                            (current) => ({
-                              ...current,
-                              longitude:
-                                event.target
-                                  .value,
-                            })
-                          )
-                        }
-                        placeholder="78.4772"
-                        style={{
-                          display: "block",
-                          width: "100%",
-                          marginTop: "7px",
-                          padding: "11px",
-                          borderRadius: "8px",
-                          background:
-                            "#0b0e17",
-                          color: "#fff",
-                          border:
-                            "1px solid rgba(255,255,255,0.08)",
-                          boxSizing:
-                            "border-box",
-                        }}
-                      />
-
-                    </label>
-
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: "15px",
+                      display: "block",
+                      width: "100%",
+                      marginTop: "7px",
                       padding: "11px",
                       borderRadius: "8px",
-                      background:
-                        "rgba(60,221,176,0.05)",
-                      color: "#7f8797",
-                      fontSize: "10px",
-                      lineHeight: 1.5,
+                      background: "#0b0e17",
+                      color: "#fff",
+                      border: "1px solid rgba(255,255,255,0.08)",
                     }}
                   >
-                    Enter the latitude and longitude
-                    for the shipment's current location.
-                  </div>
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {getDisplayStatus(status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                  <div
+                <label
+                  style={{
+                    display: "block",
+                    color: "#9ca3b1",
+                    fontSize: "11px",
+                  }}
+                >
+                  Remarks
+                  <textarea
+                    rows="4"
+                    value={statusForm.remarks}
+                    onChange={(event) =>
+                      setStatusForm((current) => ({
+                        ...current,
+                        remarks: event.target.value,
+                      }))
+                    }
+                    placeholder="Optional remarks"
                     style={{
-                      display: "flex",
-                      justifyContent:
-                        "flex-end",
-                      gap: "8px",
-                      marginTop: "18px",
+                      display: "block",
+                      width: "100%",
+                      marginTop: "7px",
+                      padding: "11px",
+                      resize: "vertical",
+                      borderRadius: "8px",
+                      background: "#0b0e17",
+                      color: "#fff",
+                      border: "1px solid rgba(255,255,255,0.08)",
                     }}
+                  />
+                </label>
+
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "8px",
+                    marginTop: "18px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={closeStatusModal}
+                    disabled={savingStatus}
+                    className="shipment-map-button"
                   >
-
-                    <button
-                      type="button"
-                      onClick={
-                        closeLocationModal
-                      }
-                      disabled={
-                        savingLocation
-                      }
-                      className="shipment-map-button"
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="submit"
-                      disabled={
-                        savingLocation
-                      }
-                      className="shipment-map-button"
-                    >
-                      {savingLocation
-                        ? "Updating..."
-                        : "Update Location"}
-                    </button>
-
-                  </div>
-
-                </form>
-
-              </div>
-
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingStatus}
+                    className="shipment-map-button"
+                  >
+                    {savingStatus ? "Updating..." : "Update Status"}
+                  </button>
+                </div>
+              </form>
             </div>
-
-          )}
+          </div>
+        )}
 
       </main>
 

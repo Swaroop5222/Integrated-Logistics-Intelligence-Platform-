@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiRequest } from "../../api";
 import {
   LayoutDashboard,
   Users,
@@ -20,81 +21,218 @@ import {
   Cloud,
   Eye,
   ArrowRight,
-  Download,
   RefreshCw,
   LogOut,
   Menu,
   X,
   UserCog,
-  CircleAlert,
   MessageCircle,
 } from "lucide-react";
 
 import "./AdminDashboard.css";
 
-const users = [
-  {
-    name: "Rahul Kumar",
-    email: "rahul@shiptrack.com",
-    role: "Logistics Operator",
-    status: "Active",
-  },
-  {
-    name: "Priya Sharma",
-    email: "priya@business.com",
-    role: "Business Client",
-    status: "Active",
-  },
-  {
-    name: "Arjun Reddy",
-    email: "arjun@shiptrack.com",
-    role: "Support Agent",
-    status: "Active",
-  },
-  {
-    name: "Sneha Patel",
-    email: "sneha@customer.com",
-    role: "Customer",
-    status: "Active",
-  },
-];
-
-const routeData = [
-  {
-    route: "Hyderabad → Bengaluru",
-    shipments: 18,
-    performance: 96,
-    status: "Excellent",
-  },
-  {
-    route: "Hyderabad → Mumbai",
-    shipments: 14,
-    performance: 91,
-    status: "Good",
-  },
-  {
-    route: "Bengaluru → Chennai",
-    shipments: 11,
-    performance: 94,
-    status: "Excellent",
-  },
-  {
-    route: "Chennai → Hyderabad",
-    shipments: 9,
-    performance: 82,
-    status: "Attention",
-  },
-];
-
 function AdminDashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userSearch, setUserSearch] = useState("");
+  const [users, setUsers] = useState([]);
+  const [userLoading, setUserLoading] = useState(true);
+  const [userError, setUserError] = useState("");
+  const [routeData, setRouteData] = useState([]);
+  const [routeLoading, setRouteLoading] = useState(true);
+  const [routeError, setRouteError] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [notificationError, setNotificationError] = useState("");
+  const [analytics, setAnalytics] = useState(null);
+  const [performanceReport, setPerformanceReport] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    apiRequest("/api/users")
+      .then((response) => {
+        if (active) setUsers(Array.isArray(response) ? response : []);
+      })
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to load administrator user list:", err);
+          setUserError(err.message || "Unable to load users.");
+        }
+      })
+      .finally(() => {
+        if (active) setUserLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadRoutes() {
+      try {
+        if (fromDate && toDate && fromDate > toDate) {
+          setRouteData([]);
+          setRouteError("The start date must be on or before the end date.");
+          setRouteLoading(false);
+          return;
+        }
+
+        setRouteLoading(true);
+        setRouteError("");
+        const shipmentResponse = await apiRequest("/api/shipments");
+        const allShipments = Array.isArray(shipmentResponse) ? shipmentResponse : [];
+        const shipments = allShipments.filter((shipment) => {
+          const createdDate = shipment.createdAt?.slice(0, 10);
+          return (!fromDate || (createdDate && createdDate >= fromDate))
+            && (!toDate || (createdDate && createdDate <= toDate));
+        });
+        const results = await Promise.allSettled(
+          shipments.filter((shipment) => shipment?.id).map(async (shipment) => ({
+            shipment,
+            route: await apiRequest(`/api/routes/shipment/${shipment.id}`),
+          }))
+        );
+        const failedRequests = results.filter(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.status !== 404
+        );
+        if (failedRequests.length > 0) throw failedRequests[0].reason;
+
+        const grouped = new Map();
+        results.forEach((result) => {
+          if (result.status !== "fulfilled") return;
+          const { shipment, route } = result.value;
+          const name = `${route.origin || shipment.senderAddress} → ${
+            route.destination || shipment.receiverAddress
+          }`;
+          const row = grouped.get(name) || {
+            route: name,
+            shipments: 0,
+            delivered: 0,
+          };
+          row.shipments += 1;
+          if (shipment.status === "DELIVERED") row.delivered += 1;
+          grouped.set(name, row);
+        });
+
+        const rows = [...grouped.values()].map((row) => {
+          const performance = row.shipments
+            ? Math.round((row.delivered / row.shipments) * 100)
+            : 0;
+          return {
+            ...row,
+            performance,
+            status:
+              performance >= 90
+                ? "Excellent"
+                : performance >= 75
+                  ? "Good"
+                  : "Attention",
+          };
+        });
+        if (active) setRouteData(rows);
+      } catch (err) {
+        if (active) {
+          console.error("Failed to load saved route data:", err);
+          setRouteError(err.message || "Unable to load saved route data.");
+        }
+      } finally {
+        if (active) setRouteLoading(false);
+      }
+    }
+
+    loadRoutes();
+    return () => {
+      active = false;
+    };
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest("/api/notifications")
+      .then((response) => {
+        if (active) setNotifications(Array.isArray(response) ? response.slice(0, 4) : []);
+      })
+      .catch((err) => {
+        if (active) {
+          console.error("Failed to load administrator notifications:", err);
+          setNotificationError(err.message || "Unable to load notifications.");
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAnalytics() {
+      if (fromDate && toDate && fromDate > toDate) {
+        setAnalytics(null);
+        setPerformanceReport(null);
+        setAnalyticsError("The start date must be on or before the end date.");
+        setAnalyticsLoading(false);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+      const query = params.toString();
+      const suffix = query ? `?${query}` : "";
+
+      try {
+        setAnalyticsLoading(true);
+        setAnalyticsError("");
+        const [analyticsResponse, reportResponse] = await Promise.all([
+          apiRequest(`/api/analytics${suffix}`),
+          apiRequest(`/api/reports/performance${suffix}`),
+        ]);
+        if (active) {
+          setAnalytics(analyticsResponse);
+          setPerformanceReport(reportResponse);
+        }
+      } catch (err) {
+        if (active) {
+          console.error("Failed to load administrator analytics:", err);
+          setAnalytics(null);
+          setPerformanceReport(null);
+          setAnalyticsError(err.message || "Unable to load shipment analytics.");
+        }
+      } finally {
+        if (active) setAnalyticsLoading(false);
+      }
+    }
+
+    loadAnalytics();
+    return () => {
+      active = false;
+    };
+  }, [fromDate, toDate]);
+
+  const onTimeRate = performanceReport?.completedDeliveries
+    ? `${(
+        (performanceReport.onTimeDeliveries /
+          performanceReport.completedDeliveries) *
+        100
+      ).toFixed(1)}%`
+    : "—";
 
   const filteredUsers = users.filter((user) =>
-    `${user.name} ${user.email} ${user.role}`
+    `${user.fullName} ${user.email} ${user.role}`
       .toLowerCase()
       .includes(userSearch.toLowerCase())
   );
+
+  const countUsersByRole = (role) =>
+    users.filter((user) => user.role === role).length;
 
   return (
     <div className="admin-page">
@@ -250,7 +388,7 @@ function AdminDashboard() {
 
               <span>
                 <i />
-                Operational
+                {analyticsLoading ? "Checking" : analyticsError ? "Unavailable" : "API connected"}
               </span>
             </div>
 
@@ -311,7 +449,11 @@ function AdminDashboard() {
 
             <div className="admin-live">
               <span />
-              All Systems Live
+              {analyticsLoading
+                ? "Checking API"
+                : analyticsError
+                  ? "API Unavailable"
+                  : "API Connected"}
             </div>
 
             <button className="admin-header-icon">
@@ -360,13 +502,13 @@ function AdminDashboard() {
                 </div>
 
                 <span className="admin-stat-up">
-                  +12.4%
+                  LIVE
                 </span>
 
               </div>
 
               <strong>
-                524
+                {userLoading ? "..." : users.length}
               </strong>
 
               <span>
@@ -374,7 +516,7 @@ function AdminDashboard() {
               </span>
 
               <small>
-                Across all roles
+                {userError || "Registered accounts"}
               </small>
 
             </div>
@@ -390,13 +532,13 @@ function AdminDashboard() {
                 </div>
 
                 <span className="admin-stat-up">
-                  +8.2%
+                  LIVE
                 </span>
 
               </div>
 
               <strong>
-                128
+                {analyticsLoading ? "..." : analytics?.totalShipments ?? "—"}
               </strong>
 
               <span>
@@ -420,21 +562,19 @@ function AdminDashboard() {
                 </div>
 
                 <span className="admin-stat-up">
-                  +2.6%
+                  LIVE
                 </span>
 
               </div>
 
-              <strong>
-                92.6%
-              </strong>
+              <strong>{analyticsLoading ? "..." : onTimeRate}</strong>
 
               <span>
                 On-Time Delivery
               </span>
 
               <small>
-                Platform average
+                Based on recorded delivery status history
               </small>
 
             </div>
@@ -455,16 +595,14 @@ function AdminDashboard() {
 
               </div>
 
-              <strong>
-                99.8%
-              </strong>
+              <strong>—</strong>
 
               <span>
                 System Uptime
               </span>
 
               <small>
-                Last 30 days
+                Uptime history is not available
               </small>
 
             </div>
@@ -520,12 +658,12 @@ function AdminDashboard() {
                     </strong>
 
                     <span>
-                      Operational
+                      Health telemetry unavailable
                     </span>
                   </div>
 
                   <b>
-                    99.9%
+                    —
                   </b>
 
                 </div>
@@ -544,12 +682,12 @@ function AdminDashboard() {
                     </strong>
 
                     <span>
-                      Operational
+                      Health telemetry unavailable
                     </span>
                   </div>
 
                   <b>
-                    99.8%
+                    —
                   </b>
 
                 </div>
@@ -568,12 +706,12 @@ function AdminDashboard() {
                     </strong>
 
                     <span>
-                      Operational
+                      Health telemetry unavailable
                     </span>
                   </div>
 
                   <b>
-                    99.7%
+                    —
                   </b>
 
                 </div>
@@ -607,6 +745,28 @@ function AdminDashboard() {
 
               </div>
 
+              <div className="admin-analytics-filters">
+                <label>
+                  From{" "}
+                  <input
+                    type="date"
+                    value={fromDate}
+                    max={toDate || undefined}
+                    onChange={(event) => setFromDate(event.target.value)}
+                  />
+                </label>{" "}
+                <label>
+                  To{" "}
+                  <input
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(event) => setToDate(event.target.value)}
+                  />
+                </label>
+              </div>
+              {analyticsError && <p role="alert">{analyticsError}</p>}
+
               <div className="admin-status-content">
 
                 <div className="admin-status-ring">
@@ -614,7 +774,7 @@ function AdminDashboard() {
                   <div>
 
                     <strong>
-                      128
+                      {analyticsLoading ? "..." : analytics?.totalShipments ?? "—"}
                     </strong>
 
                     <span>
@@ -635,7 +795,7 @@ function AdminDashboard() {
                     </span>
 
                     <strong>
-                      87
+                      {analyticsLoading ? "..." : analytics?.deliveredShipments ?? "—"}
                     </strong>
 
                   </div>
@@ -648,7 +808,7 @@ function AdminDashboard() {
                     </span>
 
                     <strong>
-                      32
+                      {analyticsLoading ? "..." : analytics?.inTransitShipments ?? "—"}
                     </strong>
 
                   </div>
@@ -661,7 +821,7 @@ function AdminDashboard() {
                     </span>
 
                     <strong>
-                      09
+                      {analyticsLoading ? "..." : analytics?.delayedShipments ?? "—"}
                     </strong>
 
                   </div>
@@ -729,17 +889,19 @@ function AdminDashboard() {
 
               <div className="admin-user-list">
 
-                {filteredUsers.length > 0 ? (
-                  filteredUsers.map((user, index) => (
+                {userLoading ? (
+                  <div className="admin-no-users">Loading users...</div>
+                ) : filteredUsers.length > 0 ? (
+                  filteredUsers.map((user) => (
 
                     <div
                       className="admin-user-row"
-                      key={index}
+                      key={user.id}
                     >
 
                       <div className="admin-user-avatar">
 
-                        {user.name
+                        {(user.fullName || user.email || "U")
                           .split(" ")
                           .map((word) => word[0])
                           .join("")}
@@ -749,7 +911,7 @@ function AdminDashboard() {
                       <div className="admin-user-info">
 
                         <strong>
-                          {user.name}
+                          {user.fullName}
                         </strong>
 
                         <span>
@@ -759,14 +921,14 @@ function AdminDashboard() {
                       </div>
 
                       <div className="admin-user-role">
-                        {user.role}
+                        {user.role?.replaceAll("_", " ")}
                       </div>
 
                       <div className="admin-user-status">
 
                         <i />
 
-                        {user.status}
+                        Registered
 
                       </div>
 
@@ -801,115 +963,43 @@ function AdminDashboard() {
                     SYSTEM ALERTS
                   </span>
 
-                  <h2>
-                    Attention Required
-                  </h2>
+                  <h2>Recent Shipment Notifications</h2>
 
                 </div>
 
                 <div className="admin-alert-count">
-                  04
+                  {notifications.length.toString().padStart(2, "0")}
                 </div>
 
               </div>
 
               <div className="admin-alert-list">
 
-                {/* Alert 1 */}
-
-                <div className="admin-alert-item danger">
-
-                  <div>
-                    <AlertTriangle size={16} />
+                {notificationError ? (
+                  <div className="admin-no-users" role="alert">
+                    {notificationError}
                   </div>
-
-                  <section>
-
-                    <strong>
-                      Delayed shipments
-                    </strong>
-
-                    <span>
-                      9 shipments require monitoring.
-                    </span>
-
-                  </section>
-
-                  <ArrowRight size={14} />
-
-                </div>
-
-                {/* Alert 2 */}
-
-                <div className="admin-alert-item warning">
-
-                  <div>
-                    <CircleAlert size={16} />
-                  </div>
-
-                  <section>
-
-                    <strong>
-                      Route performance
-                    </strong>
-
-                    <span>
-                      Chennai → Hyderabad needs attention.
-                    </span>
-
-                  </section>
-
-                  <ArrowRight size={14} />
-
-                </div>
-
-                {/* Alert 3 */}
-
-                <div className="admin-alert-item info">
-
-                  <div>
-                    <Users size={16} />
-                  </div>
-
-                  <section>
-
-                    <strong>
-                      User activity
-                    </strong>
-
-                    <span>
-                      12 new users registered today.
-                    </span>
-
-                  </section>
-
-                  <ArrowRight size={14} />
-
-                </div>
-
-                {/* Alert 4 */}
-
-                <div className="admin-alert-item success">
-
-                  <div>
-                    <CheckCircle2 size={16} />
-                  </div>
-
-                  <section>
-
-                    <strong>
-                      System backup
-                    </strong>
-
-                    <span>
-                      Latest backup completed successfully.
-                    </span>
-
-                  </section>
-
-                  <ArrowRight size={14} />
-
-                </div>
+                ) : notifications.length ? (
+                  notifications.map((notification) => (
+                    <div
+                      className={`admin-alert-item ${notification.read ? "info" : "warning"}`}
+                      key={notification.id}
+                    >
+                      <div>
+                        {notification.read
+                          ? <CheckCircle2 size={16} />
+                          : <AlertTriangle size={16} />}
+                      </div>
+                      <section>
+                        <strong>{notification.title}</strong>
+                        <span>{notification.message}</span>
+                      </section>
+                      <ArrowRight size={14} />
+                    </div>
+                  ))
+                ) : (
+                  <div className="admin-no-users">No shipment notifications.</div>
+                )}
 
               </div>
 
@@ -969,11 +1059,17 @@ function AdminDashboard() {
 
               </div>
 
-              {routeData.map((route, index) => (
+              {routeError ? (
+                <div className="admin-no-users" role="alert">{routeError}</div>
+              ) : routeLoading ? (
+                <div className="admin-no-users">Loading saved routes...</div>
+              ) : routeData.length === 0 ? (
+                <div className="admin-no-users">No saved shipment routes.</div>
+              ) : routeData.map((route) => (
 
                 <div
                   className="route-row"
-                  key={index}
+                  key={route.route}
                 >
 
                   <div className="route-name">
@@ -1068,7 +1164,7 @@ function AdminDashboard() {
                   </strong>
 
                   <span>
-                    386 users
+                    {userLoading ? "..." : `${countUsersByRole("CUSTOMER")} users`}
                   </span>
 
                 </div>
@@ -1084,7 +1180,7 @@ function AdminDashboard() {
                   </strong>
 
                   <span>
-                    74 users
+                    {userLoading ? "..." : `${countUsersByRole("BUSINESS_CLIENT")} users`}
                   </span>
 
                 </div>
@@ -1100,7 +1196,7 @@ function AdminDashboard() {
                   </strong>
 
                   <span>
-                    41 users
+                    {userLoading ? "..." : `${countUsersByRole("LOGISTICS_OPERATOR")} users`}
                   </span>
 
                 </div>
@@ -1116,7 +1212,7 @@ function AdminDashboard() {
                   </strong>
 
                   <span>
-                    18 users
+                    {userLoading ? "..." : `${countUsersByRole("SUPPORT_AGENT")} users`}
                   </span>
 
                 </div>
@@ -1132,7 +1228,7 @@ function AdminDashboard() {
                   </strong>
 
                   <span>
-                    5 users
+                    {userLoading ? "..." : `${countUsersByRole("ADMINISTRATOR")} users`}
                   </span>
 
                 </div>
@@ -1168,82 +1264,36 @@ function AdminDashboard() {
 
               <div className="admin-report-list">
 
-                {/* Report 1 */}
-
                 <div>
-
                   <div className="report-icon">
                     <BarChart3 size={17} />
                   </div>
-
                   <section>
-
                     <strong>
                       Delivery Performance
                     </strong>
-
                     <span>
-                      Monthly analytics report
+                      {analyticsLoading
+                        ? "Loading report..."
+                        : `${performanceReport?.completedDeliveries ?? 0} completed deliveries in the selected dates`}
                     </span>
-
                   </section>
-
-                  <button>
-                    <Download size={15} />
-                  </button>
-
                 </div>
 
-                {/* Report 2 */}
-
                 <div>
-
-                  <div className="report-icon">
-                    <Users size={17} />
-                  </div>
-
+                  <div className="report-icon"><Users size={17} /></div>
                   <section>
-
-                    <strong>
-                      User Activity
-                    </strong>
-
-                    <span>
-                      Platform user activity report
-                    </span>
-
+                    <strong>Registered Users</strong>
+                    <span>{userLoading ? "Loading users..." : `${users.length} registered accounts`}</span>
                   </section>
-
-                  <button>
-                    <Download size={15} />
-                  </button>
-
                 </div>
 
-                {/* Report 3 */}
-
                 <div>
-
-                  <div className="report-icon">
-                    <Package size={17} />
-                  </div>
-
+                  <div className="report-icon"><Package size={17} /></div>
                   <section>
-
-                    <strong>
-                      Shipment Summary
-                    </strong>
-
-                    <span>
-                      System shipment overview
-                    </span>
-
+                    <strong>Shipment Summary</strong>
+                    <span>{analyticsLoading ? "Loading shipments..." : `${analytics?.totalShipments ?? 0} shipments created in the selected dates`}</span>
                   </section>
-
-                  <button>
-                    <Download size={15} />
-                  </button>
-
                 </div>
 
               </div>
@@ -1263,11 +1313,11 @@ function AdminDashboard() {
               <span className="admin-green-dot" />
 
               <strong>
-                Platform operational
+                {analyticsLoading ? "Checking platform data" : analyticsError ? "Platform data unavailable" : "Live platform data"}
               </strong>
 
               <small>
-                Last synchronized just now
+                Counts read from the authenticated backend APIs
               </small>
 
             </div>
@@ -1276,17 +1326,17 @@ function AdminDashboard() {
 
               <span>
                 API
-                <b>Healthy</b>
+                <b>{analyticsLoading ? "Checking" : analyticsError ? "Unavailable" : "Connected"}</b>
               </span>
 
               <span>
                 Database
-                <b>Healthy</b>
+                <b>{analyticsLoading ? "Checking" : analyticsError ? "Unavailable" : "Connected"}</b>
               </span>
 
               <span>
                 Tracking
-                <b>Live</b>
+                <b>Not monitored</b>
               </span>
 
             </div>

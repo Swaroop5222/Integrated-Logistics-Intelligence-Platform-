@@ -30,8 +30,8 @@ public class RouteResponse {
     private LocalDateTime updatedAt;
 
     public static RouteResponse from(Route route) {
-    return from(route, null);
-}
+        return from(route, route.getGeometry());
+    }
 
 public static RouteResponse from(Route route, String geometry) {
 

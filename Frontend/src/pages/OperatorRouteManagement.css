@@ -179,57 +179,6 @@
   font-size: 14px;
 }
 
-.route-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-}
-
-.route-live-status {
-  border: 1px solid rgba(49, 211, 143, 0.25);
-  background: rgba(49, 211, 143, 0.06);
-  color: #4de0a0;
-  border-radius: 11px;
-  padding: 11px 15px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.route-live-status span {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #36d991;
-  margin-right: 8px;
-}
-
-.route-notification {
-  position: relative;
-  width: 43px;
-  height: 43px;
-  border: 1px solid #242936;
-  border-radius: 11px;
-  background: #10131d;
-  color: #dbe0ed;
-  cursor: pointer;
-}
-
-.route-notification span {
-  position: absolute;
-  top: -6px;
-  right: -5px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ff496d;
-  color: white;
-  font-size: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* ================= STATS ================= */
 
 .route-stats {
@@ -351,6 +300,32 @@
   font-weight: 700;
 }
 
+.route-map-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.route-shipment-select {
+  max-width: min(520px, 52vw);
+  min-width: 180px;
+  padding: 8px 30px 8px 11px;
+  border: 1px solid #303647;
+  border-radius: 9px;
+  background: #0c0f18;
+  color: #dbe0ed;
+  font: inherit;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.route-shipment-select:disabled {
+  color: #7d879d;
+  cursor: not-allowed;
+}
+
 /* ================= MAP ================= */
 
 .route-map {
@@ -362,97 +337,10 @@
     #0c0f18;
 }
 
-.map-grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.35;
-  background-image:
-    linear-gradient(#252a38 1px, transparent 1px),
-    linear-gradient(90deg, #252a38 1px, transparent 1px);
-  background-size: 42px 42px;
-}
-
-.map-node {
-  position: absolute;
-  z-index: 3;
-  color: #dfe4f1;
-  font-size: 10px;
-}
-
-.map-node span {
-  width: 11px;
-  height: 11px;
-  display: block;
-  border-radius: 50%;
-  background: #ff7048;
-  box-shadow: 0 0 0 6px rgba(255, 112, 72, 0.1);
-  margin-bottom: 8px;
-}
-
-.node-hyd {
-  left: 31%;
-  top: 43%;
-}
-
-.node-blr {
-  left: 46%;
-  top: 69%;
-}
-
-.node-mum {
-  left: 12%;
-  top: 53%;
-}
-
-.node-pune {
-  left: 22%;
-  top: 61%;
-}
-
-.node-chn {
-  left: 53%;
-  top: 83%;
-}
-
-.node-del {
-  left: 70%;
-  top: 17%;
-}
-
-.route-line {
-  position: absolute;
-  height: 2px;
-  background: linear-gradient(90deg, #ff7048, #8b5cf6);
-  transform-origin: left center;
-  opacity: 0.5;
-}
-
-.line-one {
-  width: 150px;
-  left: 34%;
-  top: 47%;
-  transform: rotate(57deg);
-}
-
-.line-two {
-  width: 120px;
-  left: 15%;
-  top: 57%;
-  transform: rotate(16deg);
-}
-
-.line-three {
-  width: 110px;
-  left: 24%;
-  top: 65%;
-  transform: rotate(9deg);
-}
-
-.line-four {
-  width: 250px;
-  left: 33%;
-  top: 46%;
-  transform: rotate(-25deg);
+.route-map .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #0c0f18;
 }
 
 /* ================= EFFICIENCY ================= */
@@ -467,11 +355,7 @@
   width: 150px;
   height: 150px;
   border-radius: 50%;
-  background: conic-gradient(
-    #ff7048 0deg,
-    #ff3d81 333deg,
-    #292e3c 333deg
-  );
+  background: #292e3c;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -550,17 +434,6 @@
   margin-bottom: 22px;
 }
 
-.route-action-button {
-  border: none;
-  border-radius: 9px;
-  padding: 10px 15px;
-  color: white;
-  background: linear-gradient(135deg, #ff7048, #ff3d81);
-  font-weight: 700;
-  font-size: 11px;
-  cursor: pointer;
-}
-
 .route-table-wrapper {
   overflow-x: auto;
 }
@@ -568,7 +441,7 @@
 .route-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 900px;
+  min-width: 760px;
 }
 
 .route-table th {
@@ -621,8 +494,7 @@
   font-weight: 700;
 }
 
-.driver-text,
-.vehicle-text {
+.driver-text {
   color: #a4acc0;
 }
 
@@ -660,30 +532,13 @@
   background: #ffb15c;
 }
 
-.route-progress {
-  display: flex;
-  align-items: center;
-  gap: 9px;
+.completed-status {
+  color: #39d89c;
+  background: rgba(42, 215, 151, 0.08);
 }
 
-.route-progress-bar {
-  width: 80px;
-  height: 5px;
-  background: #272c39;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.route-progress-bar span {
-  height: 100%;
-  display: block;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #ff7048, #ff3d81);
-}
-
-.route-progress small {
-  color: #8791a7;
-  font-size: 10px;
+.completed-status span {
+  background: #39d89c;
 }
 
 .route-eta {
@@ -792,6 +647,20 @@
   .route-header {
     flex-direction: column;
     gap: 20px;
+  }
+
+  .route-panel-header {
+    gap: 12px;
+  }
+
+  .route-map-controls {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
+  .route-shipment-select {
+    max-width: 58vw;
+    min-width: 0;
   }
 
   .route-stats {

@@ -279,6 +279,10 @@ function Tracking() {
   const [shipment, setShipment] = useState(null);
 
   const [location, setLocation] = useState(null);
+  const [shipmentHistory, setShipmentHistory] = useState([]);
+  const [eta, setEta] = useState(null);
+  const [forecasts, setForecasts] = useState([]);
+  const [proofOfDelivery, setProofOfDelivery] = useState(null);
 
   const [loadingUser, setLoadingUser] =
     useState(true);
@@ -289,6 +293,9 @@ function Tracking() {
   const [error, setError] = useState("");
 
   const [locationError, setLocationError] =
+    useState("");
+
+  const [detailsWarning, setDetailsWarning] =
     useState("");
 
   /* =========================
@@ -338,6 +345,11 @@ function Tracking() {
     if (!cleanNumber) {
       setShipment(null);
       setLocation(null);
+      setShipmentHistory([]);
+      setEta(null);
+      setForecasts([]);
+      setProofOfDelivery(null);
+      setDetailsWarning("");
       setError(
         "Please enter a tracking number."
       );
@@ -348,8 +360,13 @@ function Tracking() {
       setLoadingShipment(true);
       setError("");
       setLocationError("");
+      setDetailsWarning("");
       setShipment(null);
       setLocation(null);
+      setShipmentHistory([]);
+      setEta(null);
+      setForecasts([]);
+      setProofOfDelivery(null);
 
       setTrackingNumber(cleanNumber);
 
@@ -370,29 +387,116 @@ function Tracking() {
 
       setShipment(shipmentData);
 
-      /*
-       * Get current live location.
-       */
       if (shipmentData?.id) {
-        try {
-          const locationData =
-            await apiRequest(
-              `/api/shipments/${shipmentData.id}/location`
-            );
+        const shipmentId = shipmentData.id;
+        const terminalStatus = [
+          "DELIVERED",
+          "CANCELLED",
+          "FAILED_DELIVERY",
+        ].includes(
+          String(shipmentData.status || "").toUpperCase()
+        );
+        const optionalResults = await Promise.allSettled([
+          apiRequest(`/api/shipments/${shipmentId}/location`),
+          apiRequest(`/api/shipments/${shipmentId}/history`),
+          terminalStatus
+            ? Promise.resolve(null)
+            : apiRequest(`/api/routes/shipment/${shipmentId}`),
+          apiRequest(`/api/forecasts/shipment/${shipmentId}`),
+          apiRequest(`/api/shipments/${shipmentId}/pod`),
+        ]);
+        const [
+          locationResult,
+          historyResult,
+          routeResult,
+          forecastResult,
+          podResult,
+        ] = optionalResults;
+        const failedRequests = optionalResults.filter(
+          (result) =>
+            result.status === "rejected" &&
+            result.reason?.status !== 404
+        );
 
-          setLocation(locationData);
-        } catch (locationErr) {
-          console.warn(
-            "Current location unavailable:",
-            locationErr
+        if (failedRequests.length > 0) {
+          console.error(
+            "Some shipment tracking details could not be loaded:",
+            failedRequests.map((result) => result.reason)
           );
+          setDetailsWarning(
+            "Some tracking details could not be loaded."
+          );
+        }
 
+        if (locationResult.status === "fulfilled") {
+          setLocation(locationResult.value);
+        } else {
           setLocation(null);
-
           setLocationError(
-            locationErr?.message ||
+            locationResult.reason?.message ||
               "Current location unavailable."
           );
+        }
+
+        if (
+          historyResult.status === "fulfilled" &&
+          Array.isArray(historyResult.value)
+        ) {
+          setShipmentHistory(historyResult.value);
+        }
+
+        if (
+          forecastResult.status === "fulfilled" &&
+          Array.isArray(forecastResult.value)
+        ) {
+          setForecasts(forecastResult.value);
+        }
+
+        if (podResult.status === "fulfilled") {
+          setProofOfDelivery(podResult.value);
+        }
+
+        const route =
+          routeResult.status === "fulfilled"
+            ? routeResult.value
+            : null;
+
+        if (
+          route?.destinationLatitude != null &&
+          route?.destinationLongitude != null &&
+          !terminalStatus
+        ) {
+          try {
+            const etaData = await apiRequest(
+              `/api/shipments/${shipmentId}/eta`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  destination: {
+                    latitude: Number(
+                      route.destinationLatitude
+                    ),
+                    longitude: Number(
+                      route.destinationLongitude
+                    ),
+                  },
+                  trafficCondition: "MODERATE",
+                  weatherDelayHours: 0,
+                  routeChangeDelayHours: 0,
+                }),
+              }
+            );
+
+            setEta(etaData);
+          } catch (etaErr) {
+            console.error(
+              "Failed to load shipment ETA:",
+              etaErr
+            );
+            setDetailsWarning(
+              "Some tracking details could not be loaded."
+            );
+          }
         }
       }
     } catch (err) {
@@ -403,6 +507,10 @@ function Tracking() {
 
       setShipment(null);
       setLocation(null);
+      setShipmentHistory([]);
+      setEta(null);
+      setForecasts([]);
+      setProofOfDelivery(null);
 
       setError(
         err?.message ||
@@ -439,6 +547,11 @@ function Tracking() {
   }
 
   const status = getStatus(shipment);
+  const isTerminalStatus = [
+    "DELIVERED",
+    "CANCELLED",
+    "FAILED_DELIVERY",
+  ].includes(status);
 
   const formattedStatus =
     formatStatus(status);
@@ -460,6 +573,12 @@ function Tracking() {
     shipment
       ? getTimelineSteps(shipment)
       : [];
+
+  const latestForecast = [...forecasts].sort(
+    (left, right) =>
+      new Date(right.createdAt || 0) -
+      new Date(left.createdAt || 0)
+  )[0] || null;
 
   return (
     <div className="tracking-page">
@@ -750,6 +869,19 @@ function Tracking() {
                 </div>
               )}
 
+              {detailsWarning && (
+                <div
+                  role="status"
+                  style={{
+                    padding: "0 25px 20px",
+                    color: "#ffb36b",
+                    fontSize: "11px",
+                  }}
+                >
+                  {detailsWarning}
+                </div>
+              )}
+
               {/* TIMELINE */}
 
               <div className="tracking-timeline">
@@ -826,6 +958,27 @@ function Tracking() {
               </div>
             </section>
 
+            {shipmentHistory.length > 0 && (
+              <section className="tracking-history-panel">
+                <h2>Shipment history</h2>
+                <ol>
+                  {[...shipmentHistory]
+                    .sort(
+                      (left, right) =>
+                        new Date(left.createdAt || 0) -
+                        new Date(right.createdAt || 0)
+                    )
+                    .map((event, index) => (
+                      <li key={`${event.id || event.createdAt || "status"}-${index}`}>
+                        <strong>{formatStatus(event.status)}</strong>
+                        <span>{formatDateTime(event.createdAt)}</span>
+                        {event.remarks && <small>{event.remarks}</small>}
+                      </li>
+                    ))}
+                </ol>
+              </section>
+            )}
+
             {/* =========================
                 DETAILS
             ========================= */}
@@ -884,6 +1037,71 @@ function Tracking() {
                 <small>
                   {getPriority(shipment)}
                 </small>
+              </div>
+
+              <div className="tracking-detail-card">
+                <span>ESTIMATED DELIVERY</span>
+                <strong>
+                  {formatDateTime(eta?.expectedCompletionTime)}
+                </strong>
+                <small>
+                  {eta?.predictedDelayHours != null
+                    ? `${eta.predictedDelayHours} predicted delay hours`
+                    : "No live ETA available"}
+                </small>
+              </div>
+
+              <div className="tracking-detail-card">
+                <span>DELIVERY FORECAST</span>
+                <strong>
+                  {isTerminalStatus
+                    ? "Not applicable"
+                    : formatDateTime(
+                        latestForecast?.predictedDeliveryTime
+                      )}
+                </strong>
+                <small>
+                  {isTerminalStatus
+                    ? `Shipment is ${formattedStatus.toLowerCase()}`
+                    : latestForecast?.predictedStatus
+                    ? `Predicted status: ${formatStatus(
+                        latestForecast.predictedStatus
+                      )}`
+                    : "No saved forecast available"}
+                </small>
+              </div>
+
+              <div className="tracking-detail-card">
+                <span>PROOF OF DELIVERY</span>
+                <strong>
+                  {proofOfDelivery
+                    ? "Recorded"
+                    : status === "DELIVERED"
+                    ? "Unavailable"
+                    : "Pending delivery"}
+                </strong>
+                <small>
+                  {proofOfDelivery
+                    ? formatDateTime(proofOfDelivery.deliveredAt)
+                    : status === "DELIVERED"
+                    ? "No proof of delivery record is available"
+                    : "Available after delivery"}
+                </small>
+                {proofOfDelivery?.signature?.startsWith(
+                  "data:image/"
+                ) && (
+                  <img
+                    src={proofOfDelivery.signature}
+                    alt="Proof of delivery signature"
+                    style={{
+                      display: "block",
+                      marginTop: "10px",
+                      maxWidth: "100%",
+                      maxHeight: "80px",
+                      objectFit: "contain",
+                    }}
+                  />
+                )}
               </div>
 
             </div>

@@ -5,7 +5,7 @@ import com.shiptrack.enums.TrafficCondition;
 public class DeliveryEtaRequest {
 
     private GeoPoint destination;
-    private TrafficCondition trafficCondition = TrafficCondition.MODERATE;
+    private TrafficCondition trafficCondition;
     private double weatherDelayHours;
     private double routeChangeDelayHours;
 

@@ -1,19 +1,9 @@
 
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiRequest } from "../api";
 import "./OperatorProofOfDelivery.css";
-
-const STATUS_OPTIONS = [
-  "CREATED",
-  "PICKED_UP",
-  "IN_TRANSIT",
-  "OUT_FOR_DELIVERY",
-  "DELIVERED",
-  "FAILED_DELIVERY",
-  "CANCELLED",
-];
 
 function formatDateTime(value) {
   if (!value) return "—";
@@ -54,11 +44,35 @@ function OperatorProofOfDelivery() {
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
 
-  useEffect(() => {
-    loadShipments();
+  const loadPodRecords = useCallback(async (list) => {
+    setPodLoading(true);
+    const records = {};
+
+    const results = await Promise.allSettled(
+      list.filter((shipment) => shipment?.id).map((shipment) =>
+        apiRequest(`/api/shipments/${shipment.id}/pod`)
+      )
+    );
+
+    const failedResults = [];
+    results.forEach((result, index) => {
+      const shipment = list.filter((item) => item?.id)[index];
+      if (result.status === "fulfilled" && result.value) {
+        records[shipment.id] = result.value;
+      } else if (result.status === "rejected" && result.reason?.status !== 404) {
+        failedResults.push(result.reason);
+      }
+    });
+
+    setPodRecords(records);
+    if (failedResults.length > 0) {
+      console.error("Failed to load proof of delivery records:", failedResults);
+      setError(failedResults[0]?.message || "Some delivery records could not be loaded.");
+    }
+    setPodLoading(false);
   }, []);
 
-  async function loadShipments() {
+  const loadShipments = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -67,40 +81,21 @@ function OperatorProofOfDelivery() {
 
       const list = Array.isArray(data)
         ? data
-        : data?.content || data?.shipments || [];
+        : data?.content || data?.shipments || data?.data || [];
 
       setShipments(list);
-
       await loadPodRecords(list);
     } catch (err) {
-  console.error("Failed to load shipment data:", err);
-  setError("Unable to load delivery information. Please try again.");
-}finally {
+      console.error("Failed to load shipment data:", err);
+      setError(err.message || "Unable to load delivery information. Please try again.");
+    } finally {
       setLoading(false);
     }
-  }
+  }, [loadPodRecords]);
 
-  async function loadPodRecords(list) {
-    const records = {};
-
-    await Promise.all(
-      list.map(async (shipment) => {
-        try {
-          const pod = await apiRequest(
-            `/api/shipments/${shipment.id}/pod`
-          );
-
-          if (pod) {
-            records[shipment.id] = pod;
-          }
-        } catch {
-          // A shipment without POD is normal.
-        }
-      })
-    );
-
-    setPodRecords(records);
-  }
+  useEffect(() => {
+    loadShipments();
+  }, [loadShipments]);
 
   function openShipment(shipment) {
     setSelectedShipment(shipment);
@@ -210,15 +205,18 @@ function OperatorProofOfDelivery() {
   async function savePod() {
     if (!selectedShipment) return;
 
-    if (selectedShipment.status !== "DELIVERED") {
-      setError(
-        "POD can only be created after the shipment is DELIVERED."
-      );
+    if (podRecords[selectedShipment.id]) {
+      setError("A POD already exists for this shipment.");
       return;
     }
 
-    if (podRecords[selectedShipment.id]) {
-      setError("A POD already exists for this shipment.");
+    if (selectedShipment.status === "CANCELLED") {
+      setError("A cancelled shipment cannot be confirmed as delivered.");
+      return;
+    }
+
+    if (!deliveredAt) {
+      setError("Please enter the delivery date and time.");
       return;
     }
 
@@ -234,12 +232,10 @@ function OperatorProofOfDelivery() {
       setError("");
 
       const payload = {
-        deliveredAt: deliveredAt
-          ? new Date(deliveredAt).toISOString().slice(0, 19)
-          : new Date().toISOString().slice(0, 19),
+        deliveredAt: `${deliveredAt}:00`,
         deliveryStatus,
         signature,
-        remarks,
+        remarks: remarks.trim(),
       };
 
       const createdPod = await apiRequest(
@@ -255,6 +251,13 @@ function OperatorProofOfDelivery() {
         [selectedShipment.id]: createdPod,
       }));
 
+      setShipments((previous) =>
+        previous.map((shipment) =>
+          shipment.id === selectedShipment.id
+            ? { ...shipment, status: createdPod.deliveryStatus, updatedAt: createdPod.updatedAt }
+            : shipment
+        )
+      );
       closeShipment();
     } catch (err) {
       setError(err.message || "Failed to save proof of delivery.");
@@ -678,6 +681,15 @@ function OperatorProofOfDelivery() {
                   </div>
 
                   <div>
+                    <span>Signature Verification</span>
+                    <strong>
+                      {podRecords[selectedShipment.id].signatureVerified
+                        ? "Verified"
+                        : "Invalid"}
+                    </strong>
+                  </div>
+
+                  <div>
                     <span>Delivered By</span>
                     <strong>
                       {
@@ -795,9 +807,9 @@ function OperatorProofOfDelivery() {
                     type="button"
                     className="pod-save-button"
                     onClick={savePod}
-                    disabled={saving}
+                    disabled={saving || podLoading}
                   >
-                    {saving ? "Saving..." : "Save Proof of Delivery"}
+                    {saving ? "Confirming..." : "Confirm Delivery & Save POD"}
                   </button>
                 </div>
               </>

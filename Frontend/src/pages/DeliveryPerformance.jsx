@@ -8,12 +8,57 @@ function DeliveryPerformance() {
   const [shipments, setShipments] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [user, setUser] = useState(null);
+  const [performanceReport, setPerformanceReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     loadPerformanceData();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadReport() {
+      if (fromDate && toDate && fromDate > toDate) {
+        setPerformanceReport(null);
+        setReportError("The start date must be on or before the end date.");
+        setReportLoading(false);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+
+      try {
+        setReportLoading(true);
+        setReportError("");
+        const query = params.toString();
+        const report = await apiRequest(
+          `/api/reports/performance${query ? `?${query}` : ""}`
+        );
+        if (active) setPerformanceReport(report);
+      } catch (err) {
+        if (active) {
+          console.error("Failed to load performance report:", err);
+          setPerformanceReport(null);
+          setReportError(err.message || "Unable to load performance report.");
+        }
+      } finally {
+        if (active) setReportLoading(false);
+      }
+    }
+
+    loadReport();
+    return () => {
+      active = false;
+    };
+  }, [fromDate, toDate]);
 
   const loadPerformanceData = async () => {
     try {
@@ -488,7 +533,80 @@ function DeliveryPerformance() {
 
         </header>
 
+        <section className="performance-panel">
+          <div className="panel-header">
+            <div>
+              <span className="panel-kicker">PERFORMANCE REPORT FILTERS</span>
+              <h2>Delivery date range</h2>
+            </div>
+            <div>
+              <label>
+                From{" "}
+                <input
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(event) => setFromDate(event.target.value)}
+                />
+              </label>{" "}
+              <label>
+                To{" "}
+                <input
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(event) => setToDate(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+          <p>
+            On-time means delivered with no failed-delivery status recorded.
+          </p>
+          {reportError && <p role="alert">{reportError}</p>}
+        </section>
+
         {error && <p role="alert">{error}</p>}
+
+        {!reportError && (
+          <section className="performance-stats">
+            <div className="performance-stat orange">
+              <div className="stat-top">
+                <span>ON-TIME DELIVERIES</span>
+                <div className="stat-icon">✓</div>
+              </div>
+              <strong>{reportLoading ? "..." : performanceReport?.onTimeDeliveries ?? 0}</strong>
+              <div className="stat-change"><span>Completed without a recorded failed attempt</span></div>
+            </div>
+
+            <div className="performance-stat pink">
+              <div className="stat-top">
+                <span>DELAYED DELIVERIES</span>
+                <div className="stat-icon">!</div>
+              </div>
+              <strong>{reportLoading ? "..." : performanceReport?.delayedDeliveries ?? 0}</strong>
+              <div className="stat-change"><span>Failed delivery status recorded</span></div>
+            </div>
+
+            <div className="performance-stat green">
+              <div className="stat-top">
+                <span>COMPLETED DELIVERIES</span>
+                <div className="stat-icon">✓</div>
+              </div>
+              <strong>{reportLoading ? "..." : performanceReport?.completedDeliveries ?? 0}</strong>
+              <div className="stat-change"><span>Successful delivery confirmations</span></div>
+            </div>
+
+            <div className="performance-stat purple">
+              <div className="stat-top">
+                <span>REPORT RECORDS</span>
+                <div className="stat-icon">▤</div>
+              </div>
+              <strong>{reportLoading ? "..." : performanceReport?.records?.length ?? 0}</strong>
+              <div className="stat-change"><span>Records matching the selected dates</span></div>
+            </div>
+          </section>
+        )}
 
         {/* SUMMARY STATS */}
         {!error && (
@@ -602,9 +720,9 @@ function DeliveryPerformance() {
                   <span className="legend delivered" />
 
                   <div>
-                    <strong>Delivered</strong>
+                    <strong>On-Time Deliveries</strong>
                     <small>
-                      {deliveredShipments} shipments
+                      {reportLoading ? "..." : performanceReport?.onTimeDeliveries ?? 0} deliveries
                     </small>
                   </div>
 
@@ -615,9 +733,9 @@ function DeliveryPerformance() {
                   <span className="legend transit" />
 
                   <div>
-                    <strong>In Transit</strong>
+                    <strong>Delayed Deliveries</strong>
                     <small>
-                      {inTransitShipments} shipments
+                      {reportLoading ? "..." : performanceReport?.delayedDeliveries ?? 0} deliveries
                     </small>
                   </div>
 
@@ -628,9 +746,9 @@ function DeliveryPerformance() {
                   <span className="legend delayed" />
 
                   <div>
-                    <strong>Failed Deliveries</strong>
+                    <strong>Completed Deliveries</strong>
                     <small>
-                      {failedDeliveries} shipments
+                      {reportLoading ? "..." : performanceReport?.completedDeliveries ?? 0} deliveries
                     </small>
                   </div>
 
@@ -643,6 +761,57 @@ function DeliveryPerformance() {
           </div>
 
         </section>
+        )}
+
+        {!reportError && (
+          <section className="performance-panel route-panel">
+            <div className="panel-header">
+              <div>
+                <span className="panel-kicker">DELIVERY PERFORMANCE</span>
+                <h2>Performance Report</h2>
+                <p>
+                  {performanceReport?.onTimeDefinition ||
+                    "On-time classification uses persisted delivery status history."}
+                </p>
+              </div>
+            </div>
+            <div className="route-table-wrapper">
+              <table className="route-table">
+                <thead>
+                  <tr>
+                    <th>TRACKING NUMBER</th>
+                    <th>RECEIVER</th>
+                    <th>STATUS</th>
+                    <th>PERFORMANCE</th>
+                    <th>COMPLETED AT</th>
+                    <th>FAILED ATTEMPTS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportLoading ? (
+                    <tr><td colSpan="6">Loading performance report...</td></tr>
+                  ) : performanceReport?.records?.length ? (
+                    performanceReport.records.map((record) => (
+                      <tr key={record.shipmentId}>
+                        <td><strong>{record.trackingNumber}</strong></td>
+                        <td>{record.receiverName || "—"}</td>
+                        <td>{record.status?.replaceAll("_", " ")}</td>
+                        <td>{record.category?.replaceAll("_", " ")}</td>
+                        <td>
+                          {record.completedAt
+                            ? new Date(record.completedAt).toLocaleString()
+                            : "—"}
+                        </td>
+                        <td>{record.failedDeliveryAttempts}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan="6">No completed or delayed deliveries in this date range.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         )}
 
         {/* ROUTE ANALYTICS */}

@@ -103,6 +103,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public List<UserDto> getAllUsers() {
+        return userRepository.findAll()
+                .stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<UserDto> getLogisticsOperators() {
         return userRepository.findByRole(Role.LOGISTICS_OPERATOR)
                 .stream()

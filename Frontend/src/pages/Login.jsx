@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import "./Login.css";
 import { apiRequest } from "../api";
@@ -19,6 +19,11 @@ import { apiRequest } from "../api";
 function Login() {
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    localStorage.removeItem("shiptrackToken");
+    localStorage.removeItem("shiptrackUser");
+  }, []);
 
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);

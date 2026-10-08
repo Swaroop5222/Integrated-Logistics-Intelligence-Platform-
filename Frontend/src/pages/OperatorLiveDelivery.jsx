@@ -162,27 +162,27 @@ function OperatorLiveDelivery() {
             <span className="nav-count">{activeDeliveries.length}</span>
           </Link>
 
-          <Link to="/dashboard/operator">
+          <Link to="/operator/shipment-tracking">
             <Package size={18} />
             Shipment Tracking
           </Link>
 
-          <Link to="/dashboard/operator">
+          <Link to="/operator/driver-tracking">
             <UserRound size={18} />
             Driver Tracking
           </Link>
 
-          <Link to="/dashboard/operator">
+          <Link to="/operator/routes">
             <MapPin size={18} />
             Route Management
           </Link>
 
-          <Link to="/dashboard/operator">
+          <Link to="/operator/eta-delay">
             <Clock3 size={18} />
             ETA & Delays
           </Link>
 
-          <Link to="/dashboard/operator">
+          <Link to="/operator/pod">
             <CheckCircle2 size={18} />
             Proof of Delivery
           </Link>

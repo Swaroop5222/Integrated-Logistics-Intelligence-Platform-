@@ -135,6 +135,7 @@ function BusinessDashboard() {
   const [user, setUser] = useState(null);
   const [shipments, setShipments] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -147,10 +148,11 @@ function BusinessDashboard() {
         setLoading(true);
         setError("");
 
-        const [userResponse, shipmentResponse] =
+        const [userResponse, shipmentResponse, analyticsResponse] =
           await Promise.all([
             apiRequest("/api/users/me"),
             apiRequest("/api/shipments"),
+            apiRequest("/api/analytics"),
           ]);
 
         if (!mounted) {
@@ -167,6 +169,7 @@ function BusinessDashboard() {
 
         setUser(userResponse);
         setShipments(shipmentList);
+        setAnalytics(analyticsResponse);
 
         /*
          * Read existing route information from the backend.
@@ -221,6 +224,7 @@ function BusinessDashboard() {
 
         setShipments([]);
         setRoutes([]);
+        setAnalytics(null);
       } finally {
         if (mounted) {
           setLoading(false);
@@ -241,38 +245,7 @@ function BusinessDashboard() {
    * ==========================================
    */
 
-  const totalShipments = shipments.length;
-
-  const inTransitShipments = useMemo(() => {
-    return shipments.filter((shipment) => {
-      const status = normalizeStatus(
-        shipment?.status
-      );
-
-      return (
-        status === "IN_TRANSIT" ||
-        status === "OUT_FOR_DELIVERY"
-      );
-    });
-  }, [shipments]);
-
-  const deliveredShipments = useMemo(() => {
-    return shipments.filter(
-      (shipment) =>
-        normalizeStatus(shipment?.status) ===
-        "DELIVERED"
-    );
-  }, [shipments]);
-
-  const failedDeliveryShipments = useMemo(() => {
-    return shipments.filter((shipment) => {
-      const status = normalizeStatus(
-        shipment?.status
-      );
-
-      return status === "FAILED_DELIVERY";
-    });
-  }, [shipments]);
+  const totalShipments = analytics?.totalShipments ?? 0;
 
   /*
    * ==========================================
@@ -697,7 +670,7 @@ function BusinessDashboard() {
             <strong>
               {loading
                 ? "..."
-                : inTransitShipments.length}
+                : analytics?.inTransitShipments ?? 0}
             </strong>
 
             <small>
@@ -728,7 +701,7 @@ function BusinessDashboard() {
             <strong>
               {loading
                 ? "..."
-                : deliveredShipments.length}
+                : analytics?.deliveredShipments ?? 0}
             </strong>
 
             <small>
@@ -759,7 +732,7 @@ function BusinessDashboard() {
             <strong>
               {loading
                 ? "..."
-                : failedDeliveryShipments.length}
+                : analytics?.delayedShipments ?? 0}
             </strong>
 
             <small>

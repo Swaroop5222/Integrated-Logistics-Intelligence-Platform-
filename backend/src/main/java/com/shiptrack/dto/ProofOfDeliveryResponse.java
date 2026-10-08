@@ -15,6 +15,7 @@ public class ProofOfDeliveryResponse {
     private LocalDateTime deliveredAt;
     private ShipmentStatus deliveryStatus;
     private String signature;
+    private boolean signatureVerified;
     private String remarks;
     private Long deliveredByUserId;
     private String deliveredByUserName;
@@ -42,6 +43,8 @@ public class ProofOfDeliveryResponse {
     public void setDeliveryStatus(ShipmentStatus deliveryStatus) { this.deliveryStatus = deliveryStatus; }
     public String getSignature() { return signature; }
     public void setSignature(String signature) { this.signature = signature; }
+    public boolean isSignatureVerified() { return signatureVerified; }
+    public void setSignatureVerified(boolean signatureVerified) { this.signatureVerified = signatureVerified; }
     public String getRemarks() { return remarks; }
     public void setRemarks(String remarks) { this.remarks = remarks; }
     public Long getDeliveredByUserId() { return deliveredByUserId; }

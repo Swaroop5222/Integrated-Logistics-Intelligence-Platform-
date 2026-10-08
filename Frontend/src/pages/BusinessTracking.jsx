@@ -185,14 +185,19 @@ function BusinessTracking() {
           ...history.map((item) => ({
             at: item.createdAt,
             title: item.status
-              ? `Status: ${String(item.status).replaceAll("_", " ")}`
+              ? `Status update: ${String(item.status).replaceAll("_", " ")}`
               : null,
             detail: item.remarks || item.updatedByName,
+            type: "status",
           })),
           ...locationHistory.map((item) => ({
             at: item.recordedAt,
-            title: item.locationName,
-            detail: item.recordedByOperatorName,
+            title: item.locationName ||
+              (item.latitude != null && item.longitude != null
+                ? `Location: ${Number(item.latitude).toFixed(5)}, ${Number(item.longitude).toFixed(5)}`
+                : "Location recorded"),
+            detail: item.recordedByOperatorName || "",
+            type: "location",
           })),
         ]
           .filter((event) => event.title || event.detail)
@@ -667,7 +672,7 @@ function BusinessTracking() {
                   SHIPMENT JOURNEY
                 </span>
 
-                <h2>Tracking Timeline</h2>
+                <h2>Route History</h2>
               </div>
 
               <span className="event-count">
@@ -679,7 +684,9 @@ function BusinessTracking() {
 
             <div className="timeline">
 
-              {shipment.events.map((event, index) => (
+              {shipment.events.length === 0 ? (
+                <p>No status or location history has been recorded for this shipment.</p>
+              ) : shipment.events.map((event, index) => (
 
                 <div
                   className={`timeline-item ${
@@ -689,7 +696,7 @@ function BusinessTracking() {
                 >
 
                   <div className="timeline-marker">
-                    {event.active ? "●" : "✓"}
+                    {event.type === "location" ? "⌖" : event.active ? "●" : "✓"}
                   </div>
 
                   <div className="timeline-line"></div>
@@ -702,7 +709,7 @@ function BusinessTracking() {
 
                     <h3>{event.title || event.detail}</h3>
 
-                    {event.title && event.detail && (
+                    {event.detail && (
                       <p>{event.detail}</p>
                     )}
 

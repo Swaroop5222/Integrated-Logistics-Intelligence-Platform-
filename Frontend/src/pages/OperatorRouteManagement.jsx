@@ -1,13 +1,40 @@
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
+import {
+  CircleMarker,
+  MapContainer,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
 import "./OperatorRouteManagement.css";
+import "leaflet/dist/leaflet.css";
 import { apiRequest } from "../api";
 
-const TERMINAL_STATUSES = ["DELIVERED", "CANCELLED"];
+const ACTIVE_STATUSES = [
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
+];
+const FAILURE_STATUS = "FAILED_DELIVERY";
 
 function formatDistance(distance) {
-  if (distance === null || distance === undefined || Number.isNaN(Number(distance))) {
+  if (
+    distance === null ||
+    distance === undefined ||
+    String(distance).trim() === "" ||
+    !Number.isFinite(Number(distance))
+  ) {
     return "Data unavailable";
   }
 
@@ -18,6 +45,7 @@ function formatDuration(minutes) {
   if (
     minutes === null ||
     minutes === undefined ||
+    String(minutes).trim() === "" ||
     Number.isNaN(Number(minutes))
   ) {
     return "Data unavailable";
@@ -36,269 +64,554 @@ function formatDuration(minutes) {
 }
 
 function normalizeStatus(status) {
-  return String(status || "").toUpperCase();
+  return String(status || "").trim().toUpperCase();
 }
 
-function getRouteStatus(shipmentStatus) {
-  const status = normalizeStatus(shipmentStatus);
-
-  if (status === "FAILED_DELIVERY") {
-    return "Attention";
-  }
-
-  if (status === "OUT_FOR_DELIVERY" || status === "IN_TRANSIT") {
-    return "On Route";
-  }
-
-  if (status === "PICKED_UP") {
-    return "On Route";
-  }
-
-  if (status === "DELIVERED") {
-    return "Delivered";
-  }
-
-  if (status === "CANCELLED") {
-    return "Cancelled";
-  }
-
-  return shipmentStatus || "Data unavailable";
-}
-
-function getProgress(status) {
+function getRouteStatus(status) {
   const normalized = normalizeStatus(status);
+  if (normalized === FAILURE_STATUS) return "Delayed";
+  if (normalized === "DELIVERED") return "Completed";
+  if (normalized === "CANCELLED") return "Cancelled";
+  if (ACTIVE_STATUSES.includes(normalized)) return "On Route";
+  if (normalized === "CREATED") return "Created";
+  return "Status unavailable";
+}
 
-  switch (normalized) {
-    case "CREATED":
-      return 0;
-    case "PICKED_UP":
-      return 25;
-    case "IN_TRANSIT":
-      return 50;
-    case "OUT_FOR_DELIVERY":
-      return 75;
-    case "DELIVERED":
-      return 100;
-    case "FAILED_DELIVERY":
-      return 75;
-    case "CANCELLED":
-      return 0;
-    default:
-      return null;
+function hasCoordinates(latitude, longitude) {
+  return (
+    latitude !== null &&
+    latitude !== undefined &&
+    longitude !== null &&
+    longitude !== undefined &&
+    String(latitude).trim() !== "" &&
+    String(longitude).trim() !== "" &&
+    Number.isFinite(Number(latitude)) &&
+    Number.isFinite(Number(longitude)) &&
+    Math.abs(Number(latitude)) <= 90 &&
+    Math.abs(Number(longitude)) <= 180 &&
+    !(Number(latitude) === 0 && Number(longitude) === 0)
+  );
+}
+
+function getRouteCoordinates(route) {
+  if (!route?.geometry) return [];
+
+  try {
+    const geometry =
+      typeof route.geometry === "string"
+        ? JSON.parse(route.geometry)
+        : route.geometry;
+    const lineString =
+      geometry?.type === "Feature" ? geometry.geometry : geometry;
+
+    if (
+      lineString?.type !== "LineString" ||
+      !Array.isArray(lineString.coordinates)
+    ) {
+      return [];
+    }
+
+    const coordinates = lineString.coordinates
+      .filter(
+        (coordinate) =>
+          Array.isArray(coordinate) &&
+          coordinate.length >= 2 &&
+          hasCoordinates(coordinate[1], coordinate[0])
+      )
+      .map(([longitude, latitude]) => [
+        Number(latitude),
+        Number(longitude),
+      ]);
+    return coordinates.length >= 2 ? coordinates : [];
+  } catch (error) {
+    console.error("Unable to read persisted route geometry:", error);
+    return [];
   }
+}
+
+function responseList(response) {
+  if (Array.isArray(response)) return response;
+  return (
+    response?.content ||
+    response?.data ||
+    response?.shipments ||
+    response?.history ||
+    []
+  );
+}
+
+function isValidLocation(location, assignedOperatorId) {
+  const recordedAt = new Date(location?.recordedAt).getTime();
+  return (
+    hasCoordinates(location?.latitude, location?.longitude) &&
+    Number.isFinite(recordedAt) &&
+    (assignedOperatorId == null ||
+      Number(location.recordedByOperatorId) ===
+        Number(assignedOperatorId))
+  );
+}
+
+function latestValidLocation(current, history, assignedOperatorId) {
+  const candidates = [
+    current,
+    ...(Array.isArray(history) ? history : []),
+  ].filter((location) => isValidLocation(location, assignedOperatorId));
+
+  return candidates.sort(
+    (first, second) =>
+      new Date(second.recordedAt).getTime() -
+      new Date(first.recordedAt).getTime()
+  )[0] || null;
+}
+
+function hasFailedDeliveryAttempt(history) {
+  return (
+    Array.isArray(history) &&
+    history.some(
+      (item) =>
+        normalizeStatus(item?.status || item?.newStatus) ===
+        FAILURE_STATUS
+    )
+  );
+}
+
+function RouteMapBounds({ points, fitKey }) {
+  const map = useMap();
+  const fittedKey = useRef(null);
+
+  useEffect(() => {
+    if (fittedKey.current === fitKey || points.length === 0) return;
+
+    if (points.length === 1) {
+      map.setView(points[0], 13);
+    } else {
+      map.fitBounds(L.latLngBounds(points), {
+        padding: [36, 36],
+        maxZoom: 13,
+      });
+    }
+    fittedKey.current = fitKey;
+  }, [fitKey, map, points]);
+
+  return null;
 }
 
 function OperatorRouteManagement() {
-  const [shipments, setShipments] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [selectedShipmentId, setSelectedShipmentId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestInProgress = useRef(false);
+  const mounted = useRef(false);
+  const routeCalculationCooldowns = useRef(new Map());
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadRouteData = useCallback(async () => {
+    if (requestInProgress.current) return;
+    requestInProgress.current = true;
 
-    async function loadRouteData() {
-      setLoading(true);
+    if (mounted.current) {
       setError("");
-
-      try {
-        const shipmentData = await apiRequest("/api/shipments");
-
-        const shipmentList = Array.isArray(shipmentData)
-          ? shipmentData
-          : shipmentData?.content || shipmentData?.data || [];
-
-        if (cancelled) return;
-
-        setShipments(shipmentList);
-
-        /*
-         * Route data is stored against shipments.
-         * Fetch the saved route for every shipment.
-         */
-        const routeResults = await Promise.allSettled(
-          shipmentList.map(async (shipment) => {
-            try {
-              const route = await apiRequest(
-                `/api/routes/shipment/${shipment.id}`
-              );
-
-              if (!route) return null;
-
-              return {
-                ...route,
-                shipment,
-              };
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        if (cancelled) return;
-
-        const validRoutes = routeResults
-          .filter((result) => result.status === "fulfilled")
-          .map((result) => result.value)
-          .filter(Boolean);
-
-        setRoutes(validRoutes);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message || "Unable to load route data.");
-          setShipments([]);
-          setRoutes([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
     }
 
-    loadRouteData();
+    try {
+      const shipmentData = await apiRequest("/api/shipments");
+      const shipmentList = responseList(shipmentData);
 
-    return () => {
-      cancelled = true;
-    };
+      if (!Array.isArray(shipmentList)) {
+        throw new Error("Unexpected response while loading shipments.");
+      }
+
+      const routeResults = await Promise.all(
+        shipmentList.map(async (shipment) => {
+          if (!shipment?.id) return null;
+
+          const [
+            routeResult,
+            locationResult,
+            locationHistoryResult,
+            statusHistoryResult,
+          ] =
+            await Promise.allSettled([
+              apiRequest(`/api/routes/shipment/${shipment.id}`),
+              apiRequest(`/api/shipments/${shipment.id}/location`),
+              apiRequest(`/api/shipments/${shipment.id}/location-history`),
+              apiRequest(`/api/shipments/${shipment.id}/history`),
+            ]);
+
+          let route =
+            routeResult.status === "fulfilled" &&
+            routeResult.value &&
+            Number(routeResult.value.shipmentId) === Number(shipment.id)
+              ? routeResult.value
+              : null;
+          let routeGenerationError = null;
+          const shipmentId = Number(shipment.id);
+          const hasPersistedGeometry =
+            getRouteCoordinates(route).length >= 2;
+          if (
+            !hasPersistedGeometry &&
+            ACTIVE_STATUSES.includes(normalizeStatus(shipment.status))
+          ) {
+            const nextAttemptAt =
+              routeCalculationCooldowns.current.get(shipmentId) || 0;
+            if (Date.now() >= nextAttemptAt) {
+              routeCalculationCooldowns.current.set(
+                shipmentId,
+                Date.now() + 60000
+              );
+              try {
+                const generatedRoute = await apiRequest(
+                  `/api/routes/shipment/${shipmentId}/calculate`,
+                  { method: "POST" }
+                );
+                if (
+                  Number(generatedRoute?.shipmentId) === shipmentId &&
+                  getRouteCoordinates(generatedRoute).length >= 2
+                ) {
+                  route = generatedRoute;
+                  routeCalculationCooldowns.current.delete(shipmentId);
+                } else {
+                  routeGenerationError = new Error(
+                    "Route generation returned no valid persisted GeoJSON geometry."
+                  );
+                }
+              } catch (generationError) {
+                routeGenerationError = generationError;
+              }
+            }
+          } else if (hasPersistedGeometry) {
+            routeCalculationCooldowns.current.delete(shipmentId);
+          }
+
+          const failures = [
+            ["route", routeResult],
+            ["location", locationResult],
+            ["location history", locationHistoryResult],
+            ["status history", statusHistoryResult],
+          ].filter(
+            ([kind, result]) =>
+              result.status === "rejected" &&
+              !(kind === "route" && result.reason?.status === 404)
+          );
+          failures.forEach(([kind, result]) => {
+            console.error(
+              `Unable to load shipment ${shipment.id} ${kind}:`,
+              result.reason
+            );
+          });
+          if (routeGenerationError) {
+            console.error(
+              `Unable to generate persisted route for shipment ${shipment.id}:`,
+              routeGenerationError
+            );
+          }
+          const history =
+            locationHistoryResult.status === "fulfilled"
+              ? responseList(locationHistoryResult.value)
+              : [];
+          const statusHistory =
+            statusHistoryResult.status === "fulfilled"
+              ? responseList(statusHistoryResult.value)
+              : [];
+          const current =
+            locationResult.status === "fulfilled"
+              ? locationResult.value
+              : null;
+
+          return {
+            ...(route || {}),
+            shipment,
+            geometryCoordinates: getRouteCoordinates(route),
+            currentLocation: latestValidLocation(
+              current,
+              history,
+              shipment.assignedOperatorId
+            ),
+            locationHistory: history,
+            statusHistory,
+            statusHistoryAvailable: statusHistoryResult.status === "fulfilled",
+            requestErrors: failures.map(([kind]) => kind),
+          };
+        })
+      );
+
+      const routeData = routeResults.filter(Boolean);
+      if (!mounted.current) return;
+
+      setRoutes(routeData);
+      const failedItems = routeData.flatMap((route) =>
+        route.requestErrors.map(
+          (request) => `${request} unavailable for ${route.shipment.trackingNumber || `shipment ${route.shipment.id}`}`
+        )
+      );
+      setError(
+        failedItems.length > 0
+          ? `Some live route data could not be refreshed: ${failedItems.join("; ")}`
+          : ""
+      );
+    } catch (err) {
+      console.error("Failed to refresh route data:", err);
+      if (mounted.current) {
+        setError(err.message || "Unable to load route data.");
+      }
+    } finally {
+      requestInProgress.current = false;
+      if (mounted.current) setLoading(false);
+    }
   }, []);
 
-  /*
-   * Only shipments that are actually active are considered
-   * active routes.
-   *
-   * Delivered and cancelled shipments are not counted as
-   * active routes.
-   */
-  const activeRoutes = useMemo(() => {
-    return routes.filter((route) => {
-      const status = normalizeStatus(route.shipment?.status);
+  useEffect(() => {
+    mounted.current = true;
+    void loadRouteData();
+    const refreshTimer = window.setInterval(
+      () => void loadRouteData(),
+      15000
+    );
 
-      return !TERMINAL_STATUSES.includes(status);
-    });
-  }, [routes]);
+    return () => {
+      mounted.current = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [loadRouteData]);
 
-  const activeShipments = useMemo(() => {
-    return shipments.filter((shipment) => {
-      const status = normalizeStatus(shipment.status);
+  const allRoutes = useMemo(
+    () =>
+      routes.filter(
+        (route) => route.id != null || route.shipmentId != null
+      ),
+    [routes]
+  );
 
-      return !TERMINAL_STATUSES.includes(status);
-    });
-  }, [shipments]);
+  const activeRoutes = useMemo(
+    () =>
+      routes.filter((route) =>
+        ACTIVE_STATUSES.includes(normalizeStatus(route.shipment?.status))
+      ),
+    [routes]
+  );
 
-  const attentionRoutes = useMemo(() => {
-    return activeRoutes.filter((route) => {
-      const status = normalizeStatus(route.shipment?.status);
+  const activeShipments = useMemo(
+    () => activeRoutes.map((route) => route.shipment),
+    [activeRoutes]
+  );
 
-      return status === "FAILED_DELIVERY";
-    });
-  }, [activeRoutes]);
+  useEffect(() => {
+    if (
+      activeRoutes.some(
+        (route) => String(route.shipment.id) === selectedShipmentId
+      )
+    ) {
+      return;
+    }
+    setSelectedShipmentId(
+      activeRoutes[0] ? String(activeRoutes[0].shipment.id) : ""
+    );
+  }, [activeRoutes, selectedShipmentId]);
 
-  const onTimeRoutes = useMemo(() => {
-    return activeRoutes.filter((route) => {
-      const status = normalizeStatus(route.shipment?.status);
+  const selectedRoute = useMemo(
+    () =>
+      activeRoutes.find(
+        (route) => String(route.shipment.id) === selectedShipmentId
+      ) || null,
+    [activeRoutes, selectedShipmentId]
+  );
 
-      return [
-        "PICKED_UP",
-        "IN_TRANSIT",
-        "OUT_FOR_DELIVERY",
-      ].includes(status);
-    });
-  }, [activeRoutes]);
+  const delayedRoutes = useMemo(
+    () =>
+      allRoutes.filter((route) => {
+        const status = normalizeStatus(route.shipment?.status);
+        return (
+          status === FAILURE_STATUS ||
+          (status === "DELIVERED" &&
+            route.statusHistoryAvailable &&
+            hasFailedDeliveryAttempt(route.statusHistory))
+        );
+      }),
+    [allRoutes]
+  );
+
+  const completedRoutes = useMemo(
+    () =>
+      allRoutes.filter(
+        (route) =>
+          normalizeStatus(route.shipment?.status) === "DELIVERED"
+      ),
+    [allRoutes]
+  );
+
+  const onTimeRoutes = useMemo(
+    () =>
+      completedRoutes.filter(
+        (route) =>
+          route.statusHistoryAvailable &&
+          !delayedRoutes.some(
+            (delayedRoute) =>
+              Number(delayedRoute.shipment?.id) ===
+              Number(route.shipment?.id)
+          )
+      ),
+    [completedRoutes, delayedRoutes]
+  );
+
+  const delayedCompletedRoutes = useMemo(
+    () =>
+      completedRoutes.filter(
+        (route) =>
+          route.statusHistoryAvailable &&
+          hasFailedDeliveryAttempt(route.statusHistory)
+      ),
+    [completedRoutes]
+  );
+
+  const classifiedCompletedCount =
+    onTimeRoutes.length + delayedCompletedRoutes.length;
 
   const efficiency = useMemo(() => {
-    if (activeRoutes.length === 0) return 0;
-
+    if (classifiedCompletedCount === 0) return null;
     return Math.round(
-      (onTimeRoutes.length / activeRoutes.length) * 100
+      (onTimeRoutes.length / classifiedCompletedCount) * 100
     );
-  }, [activeRoutes, onTimeRoutes]);
+  }, [classifiedCompletedCount, onTimeRoutes.length]);
 
-  const displayRoutes = useMemo(() => {
-    return activeRoutes.map((route) => {
-      const shipment = route.shipment || {};
-      const status = normalizeStatus(shipment.status);
+  const displayRoutes = useMemo(
+    () =>
+      allRoutes.map((route) => {
+        const shipment = route.shipment || {};
+        const status = normalizeStatus(shipment.status);
+        const failedAttempt = hasFailedDeliveryAttempt(
+          route.statusHistory
+        );
+        const delayed =
+          status === FAILURE_STATUS ||
+          (status === "DELIVERED" &&
+            route.statusHistoryAvailable &&
+            failedAttempt);
+        const origin =
+          route.origin || shipment.senderAddress || "";
+        const destination =
+          route.destination || shipment.receiverAddress || "";
+        const assignedOperator =
+          route.assignedOperatorName ||
+          shipment.assignedOperatorName ||
+          shipment.assignedOperator?.fullName ||
+          shipment.assignedOperator?.name;
 
-      const operatorName =
-        route.assignedOperatorName ||
-        shipment.assignedOperator?.fullName ||
-        shipment.assignedOperator?.name ||
-        "Data unavailable";
+        return {
+          ...route,
+          id: route.id || shipment.id,
+          shipment,
+          route:
+            origin && destination
+              ? `${origin} → ${destination}`
+              : "Route unavailable",
+          distanceKm:
+            route.distanceKm != null &&
+            String(route.distanceKm).trim() !== "" &&
+            Number.isFinite(Number(route.distanceKm))
+            ? Number(route.distanceKm)
+            : null,
+          distance: formatDistance(route.distanceKm),
+          shipments: 1,
+          driver: assignedOperator || "Not assigned",
+          status: delayed
+            ? "Delayed"
+            : getRouteStatus(status),
+          eta: formatDuration(route.estimatedDurationMinutes),
+          shipmentStatus: status,
+          trackingNumber: shipment.trackingNumber,
+          isDelayed: delayed,
+        };
+      }),
+    [allRoutes]
+  );
 
-      const progress = getProgress(status);
+  const mapRoutes = useMemo(
+    () =>
+      selectedRoute &&
+      (selectedRoute.geometryCoordinates.length > 1 ||
+        selectedRoute.currentLocation ||
+        hasCoordinates(
+          selectedRoute.originLatitude,
+          selectedRoute.originLongitude
+        ) ||
+        hasCoordinates(
+          selectedRoute.destinationLatitude,
+          selectedRoute.destinationLongitude
+        ))
+        ? [selectedRoute]
+        : [],
+    [selectedRoute]
+  );
 
-      return {
-        id: route.id || shipment.id,
-        route:
-          route.origin && route.destination
-            ? `${route.origin} → ${route.destination}`
-            : "Route unavailable",
+  const mapPoints = useMemo(
+    () =>
+      mapRoutes.flatMap((route) => [
+        ...route.geometryCoordinates,
+        ...(route.currentLocation
+          ? [[
+              Number(route.currentLocation.latitude),
+              Number(route.currentLocation.longitude),
+            ]]
+          : []),
+        ...(hasCoordinates(
+          route.originLatitude,
+          route.originLongitude
+        )
+          ? [[Number(route.originLatitude), Number(route.originLongitude)]]
+          : []),
+        ...(hasCoordinates(
+          route.destinationLatitude,
+          route.destinationLongitude
+        )
+          ? [[Number(route.destinationLatitude), Number(route.destinationLongitude)]]
+          : []),
+      ]),
+    [mapRoutes]
+  );
 
-        shipments: 1,
-
-        distance: formatDistance(route.distanceKm),
-
-        driver: operatorName,
-
-        /*
-         * Vehicle information does not exist in the current
-         * Route/Shipment backend model.
-         */
-        vehicle: "Data unavailable",
-
-        status: getRouteStatus(shipment.status),
-
-        /*
-         * Current backend does not expose a persisted live ETA
-         * for the route.
-         */
-        eta: formatDuration(route.estimatedDurationMinutes),
-
-        progress,
-
-        shipmentStatus: shipment.status,
-        trackingNumber: shipment.trackingNumber,
-      };
-    });
-  }, [activeRoutes]);
+  const mapFitKey = useMemo(
+    () =>
+      JSON.stringify(
+        mapRoutes.map((route) => ({
+          id: route.shipment.id,
+          geometry: route.geometry,
+          origin: [route.originLatitude, route.originLongitude],
+          destination: [
+            route.destinationLatitude,
+            route.destinationLongitude,
+          ],
+        }))
+      ),
+    [mapRoutes]
+  );
 
   const fastestRoute = useMemo(() => {
-    if (displayRoutes.length === 0) return null;
-
-    return displayRoutes.reduce((fastest, current) => {
-      const currentDistance = Number(
-        current.distance.replace(/[^\d.]/g, "")
-      );
-
-      const fastestDistance = Number(
-        fastest.distance.replace(/[^\d.]/g, "")
-      );
-
-      if (Number.isNaN(currentDistance)) return fastest;
-      if (Number.isNaN(fastestDistance)) return current;
-
-      return currentDistance < fastestDistance ? current : fastest;
-    });
+    const candidates = displayRoutes.filter(
+      (route) =>
+        ACTIVE_STATUSES.includes(route.shipmentStatus) &&
+        route.distanceKm != null
+    );
+    return candidates.length > 0
+      ? candidates.reduce((fastest, current) =>
+          current.distanceKm < fastest.distanceKm ? current : fastest
+        )
+      : null;
   }, [displayRoutes]);
 
   const longestRoute = useMemo(() => {
-    if (displayRoutes.length === 0) return null;
-
-    return displayRoutes.reduce((longest, current) => {
-      const currentDistance = Number(
-        current.distance.replace(/[^\d.]/g, "")
-      );
-
-      const longestDistance = Number(
-        longest.distance.replace(/[^\d.]/g, "")
-      );
-
-      if (Number.isNaN(currentDistance)) return longest;
-      if (Number.isNaN(longestDistance)) return current;
-
-      return currentDistance > longestDistance ? current : longest;
-    });
+    const candidates = displayRoutes.filter(
+      (route) =>
+        ACTIVE_STATUSES.includes(route.shipmentStatus) &&
+        route.distanceKm != null
+    );
+    return candidates.length > 0
+      ? candidates.reduce((longest, current) =>
+          current.distanceKm > longest.distanceKm ? current : longest
+        )
+      : null;
   }, [displayRoutes]);
+
+  const attentionRoutes = delayedRoutes;
 
   return (
     <div className="route-page">
@@ -424,20 +737,6 @@ function OperatorRouteManagement() {
             </p>
           </div>
 
-          <div className="route-header-actions">
-
-            <div className="route-live-status">
-              <span></span>
-              System Live
-            </div>
-
-            <button className="route-notification">
-              ♢
-              <span>{attentionRoutes.length}</span>
-            </button>
-
-          </div>
-
         </header>
 
 
@@ -486,9 +785,9 @@ function OperatorRouteManagement() {
               <strong>{onTimeRoutes.length}</strong>
 
               <small>
-                {activeRoutes.length > 0
-                  ? `${efficiency}% of active routes`
-                  : "No active routes"}
+                {classifiedCompletedCount > 0
+                  ? `${efficiency}% of classified outcomes`
+                  : "No classified completed outcomes"}
               </small>
 
             </div>
@@ -531,17 +830,47 @@ function OperatorRouteManagement() {
                 <h2>Active Route Network</h2>
               </div>
 
-              <span className="route-live-badge">
-                ● Live
-              </span>
+              <div className="route-map-controls">
+                <select
+                  className="route-shipment-select"
+                  aria-label="Select active shipment route"
+                  value={selectedShipmentId}
+                  onChange={(event) =>
+                    setSelectedShipmentId(event.target.value)
+                  }
+                  disabled={activeRoutes.length === 0}
+                >
+                  {activeRoutes.length === 0 ? (
+                    <option value="">No active routes available</option>
+                  ) : (
+                    activeRoutes.map((route) => {
+                      const shipment = route.shipment;
+                      const trackingNumber =
+                        shipment.trackingNumber || `Shipment #${shipment.id}`;
+                      const sender =
+                        route.origin || shipment.senderAddress || "Sender unavailable";
+                      const receiver =
+                        route.destination ||
+                        shipment.receiverAddress ||
+                        "Receiver unavailable";
+                      return (
+                        <option
+                          key={shipment.id}
+                          value={String(shipment.id)}
+                        >
+                          {trackingNumber} · {sender} → {receiver}
+                        </option>
+                      );
+                    })
+                  )}
+                </select>
+                <span className="route-live-badge">● Live</span>
+              </div>
 
             </div>
 
             <div className="route-map">
-
-              <div className="map-grid"></div>
-
-              {displayRoutes.length === 0 ? (
+              {mapPoints.length === 0 ? (
                 <div
                   style={{
                     position: "absolute",
@@ -553,45 +882,128 @@ function OperatorRouteManagement() {
                     fontSize: "12px",
                   }}
                 >
-                  No active routes available.
+                  {activeRoutes.length === 0
+                    ? "No active routes available"
+                    : "Route geometry and driver location unavailable."}
                 </div>
               ) : (
-                <>
-                  <div className="map-node node-hyd">
-                    <span></span>
-                    <strong>Hyderabad</strong>
-                  </div>
-
-                  <div className="map-node node-blr">
-                    <span></span>
-                    <strong>Bengaluru</strong>
-                  </div>
-
-                  <div className="map-node node-mum">
-                    <span></span>
-                    <strong>Mumbai</strong>
-                  </div>
-
-                  <div className="map-node node-pune">
-                    <span></span>
-                    <strong>Pune</strong>
-                  </div>
-
-                  <div className="map-node node-chn">
-                    <span></span>
-                    <strong>Chennai</strong>
-                  </div>
-
-                  <div className="map-node node-del">
-                    <span></span>
-                    <strong>Delhi</strong>
-                  </div>
-
-                  <div className="route-line line-one"></div>
-                  <div className="route-line line-two"></div>
-                  <div className="route-line line-three"></div>
-                  <div className="route-line line-four"></div>
-                </>
+                <MapContainer
+                  center={mapPoints[0]}
+                  zoom={13}
+                  scrollWheelZoom
+                  style={{ width: "100%", height: "100%" }}
+                >
+                  <RouteMapBounds points={mapPoints} fitKey={mapFitKey} />
+                  <TileLayer
+                    attribution="&copy; OpenStreetMap contributors"
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  {mapRoutes.map((route) => (
+                    <Fragment key={route.id || route.shipment.id}>
+                      {route.geometryCoordinates.length > 1 && (
+                        <Polyline
+                          positions={route.geometryCoordinates}
+                          pathOptions={{
+                            color: "#ff7048",
+                            weight: 4,
+                            opacity: 0.85,
+                          }}
+                        >
+                          <Popup>
+                            <strong>
+                              {route.shipment.trackingNumber ||
+                                `Shipment #${route.shipment.id}`}
+                            </strong>
+                            <br />
+                            {route.origin || route.shipment.senderAddress}
+                            {" → "}
+                            {route.destination ||
+                              route.shipment.receiverAddress}
+                          </Popup>
+                        </Polyline>
+                      )}
+                      {hasCoordinates(
+                        route.originLatitude,
+                        route.originLongitude
+                      ) && (
+                        <CircleMarker
+                          center={[
+                            Number(route.originLatitude),
+                            Number(route.originLongitude),
+                          ]}
+                          radius={6}
+                          pathOptions={{
+                            color: "#ffffff",
+                            weight: 2,
+                            fillColor: "#36d991",
+                            fillOpacity: 1,
+                          }}
+                        >
+                          <Popup>
+                            <strong>Shipment Origin</strong>
+                            <br />
+                            {route.origin || route.shipment.senderAddress}
+                          </Popup>
+                        </CircleMarker>
+                      )}
+                      {hasCoordinates(
+                        route.destinationLatitude,
+                        route.destinationLongitude
+                      ) && (
+                        <CircleMarker
+                          center={[
+                            Number(route.destinationLatitude),
+                            Number(route.destinationLongitude),
+                          ]}
+                          radius={6}
+                          pathOptions={{
+                            color: "#ffffff",
+                            weight: 2,
+                            fillColor: "#a987ff",
+                            fillOpacity: 1,
+                          }}
+                        >
+                          <Popup>
+                            <strong>Delivery Destination</strong>
+                            <br />
+                            {route.destination ||
+                              route.shipment.receiverAddress}
+                          </Popup>
+                        </CircleMarker>
+                      )}
+                      {route.currentLocation && (
+                        <CircleMarker
+                          center={[
+                            Number(route.currentLocation.latitude),
+                            Number(route.currentLocation.longitude),
+                          ]}
+                          radius={7}
+                          pathOptions={{
+                            color: "#ffffff",
+                            weight: 2,
+                            fillColor: "#2583ff",
+                            fillOpacity: 1,
+                          }}
+                        >
+                          <Popup>
+                            <strong>Current Driver Location</strong>
+                            <br />
+                            {route.shipment.assignedOperatorName ||
+                              route.assignedOperatorName ||
+                              "Assigned operator"}
+                            <br />
+                            {route.shipment.trackingNumber ||
+                              `Shipment #${route.shipment.id}`}
+                            <br />
+                            {new Date(
+                              route.currentLocation.recordedAt
+                            ).toLocaleString()}
+                          </Popup>
+                        </CircleMarker>
+                      )}
+                    </Fragment>
+                  ))}
+                </MapContainer>
               )}
 
             </div>
@@ -620,14 +1032,16 @@ function OperatorRouteManagement() {
                 style={{
                   background: `conic-gradient(
                     #36d991 0deg,
-                    #36d991 ${efficiency * 3.6}deg,
-                    #292e3c ${efficiency * 3.6}deg
+                    #36d991 ${(efficiency ?? 0) * 3.6}deg,
+                    #292e3c ${(efficiency ?? 0) * 3.6}deg
                   )`,
                 }}
               >
 
                 <div>
-                  <strong>{efficiency}%</strong>
+                  <strong>
+                    {efficiency == null ? "—" : `${efficiency}%`}
+                  </strong>
                   <span>Efficiency</span>
                 </div>
 
@@ -645,14 +1059,14 @@ function OperatorRouteManagement() {
 
               <div>
                 <span className="efficiency-dot orange-dot"></span>
-                <p>At Risk</p>
-                <strong>0</strong>
+                <p>Completed</p>
+                <strong>{completedRoutes.length}</strong>
               </div>
 
               <div>
                 <span className="efficiency-dot red-dot"></span>
                 <p>Delayed</p>
-                <strong>{attentionRoutes.length}</strong>
+                <strong>{delayedCompletedRoutes.length}</strong>
               </div>
 
             </div>
@@ -669,20 +1083,14 @@ function OperatorRouteManagement() {
           <div className="route-panel-header">
 
             <div>
-              <span className="route-panel-label">
-                ACTIVE ROUTES
-              </span>
+              <span className="route-panel-label">SAVED ROUTES</span>
 
               <h2>Route Operations</h2>
 
               <p>
-                Monitor routes, drivers, vehicles and shipment progress.
+                Persisted routes and current shipment status.
               </p>
             </div>
-
-            <button className="route-action-button">
-              + Create Route
-            </button>
 
           </div>
 
@@ -696,9 +1104,7 @@ function OperatorRouteManagement() {
                   <th>Route</th>
                   <th>Shipments</th>
                   <th>Driver</th>
-                  <th>Vehicle</th>
                   <th>Status</th>
-                  <th>Progress</th>
                   <th>ETA</th>
                 </tr>
               </thead>
@@ -709,7 +1115,7 @@ function OperatorRouteManagement() {
 
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="5"
                       style={{
                         textAlign: "center",
                         padding: "35px",
@@ -723,7 +1129,7 @@ function OperatorRouteManagement() {
 
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="5"
                       style={{
                         textAlign: "center",
                         padding: "35px",
@@ -738,7 +1144,7 @@ function OperatorRouteManagement() {
 
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="5"
                       style={{
                         textAlign: "center",
                         padding: "35px",
@@ -785,50 +1191,19 @@ function OperatorRouteManagement() {
                       </td>
 
                       <td>
-                        <span className="vehicle-text">
-                          {route.vehicle}
-                        </span>
-                      </td>
-
-                      <td>
 
                         <span
                           className={`route-status ${
-                            route.status === "Attention"
+                          route.isDelayed || route.status === "Cancelled"
                               ? "attention-status"
+                            : route.status === "Completed"
+                              ? "completed-status"
                               : "onroute-status"
-                          }`}
+                        }`}
                         >
                           <span></span>
                           {route.status}
                         </span>
-
-                      </td>
-
-                      <td>
-
-                        <div className="route-progress">
-
-                          <div className="route-progress-bar">
-
-                            <span
-                              style={{
-                                width:
-                                  route.progress === null
-                                    ? "0%"
-                                    : `${route.progress}%`,
-                              }}
-                            ></span>
-
-                          </div>
-
-                          <small>
-                            {route.progress === null
-                              ? "Data unavailable"
-                              : `${route.progress}%`}
-                          </small>
-
-                        </div>
 
                       </td>
 
@@ -925,7 +1300,7 @@ function OperatorRouteManagement() {
                 {attentionRoutes.length > 0
                   ? displayRoutes.find(
                       (route) =>
-                        route.status === "Attention"
+                          route.isDelayed
                     )?.route || "Attention required"
                   : "No attention required"}
               </strong>
@@ -949,4 +1324,3 @@ function OperatorRouteManagement() {
 }
 
 export default OperatorRouteManagement;
-

@@ -5,6 +5,7 @@ import com.shiptrack.entity.Route;
 import com.shiptrack.entity.Shipment;
 import com.shiptrack.entity.User;
 import com.shiptrack.enums.Role;
+import com.shiptrack.enums.ShipmentStatus;
 import com.shiptrack.exception.ResourceNotFoundException;
 import com.shiptrack.repository.RouteRepository;
 import com.shiptrack.repository.ShipmentRepository;
@@ -44,7 +45,7 @@ public class RouteController {
     }
 
     @PostMapping("/shipment/{shipmentId}/calculate")
-    @PreAuthorize("hasAnyRole('BUSINESS_CLIENT', 'ADMINISTRATOR')")
+    @PreAuthorize("hasAnyRole('BUSINESS_CLIENT', 'LOGISTICS_OPERATOR', 'ADMINISTRATOR')")
     public ResponseEntity<RouteResponse> calculateRoute(
             @PathVariable Long shipmentId) {
 
@@ -62,6 +63,20 @@ public class RouteController {
 
                 throw new org.springframework.security.access.AccessDeniedException(
                         "You can only calculate routes for your own shipments.");
+            }
+        } else if (currentUser.getRole() == Role.LOGISTICS_OPERATOR) {
+            boolean assignedToCurrentOperator =
+                    shipment.getAssignedOperator() != null
+                            && shipment.getAssignedOperator().getId()
+                                    .equals(currentUser.getId());
+            boolean activelyTracked =
+                    shipment.getStatus() == ShipmentStatus.PICKED_UP
+                            || shipment.getStatus() == ShipmentStatus.IN_TRANSIT
+                            || shipment.getStatus() == ShipmentStatus.OUT_FOR_DELIVERY
+                            || shipment.getStatus() == ShipmentStatus.FAILED_DELIVERY;
+            if (!assignedToCurrentOperator || !activelyTracked) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "You can only calculate routes for your assigned active shipments.");
             }
         }
 

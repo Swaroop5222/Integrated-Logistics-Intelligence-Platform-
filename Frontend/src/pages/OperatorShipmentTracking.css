@@ -523,7 +523,7 @@
 
 .shipment-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 760px;
   border-collapse: collapse;
   table-layout: fixed;
 }
@@ -617,22 +617,6 @@
   line-height: 1.45;
 }
 
-/* Location */
-
-.shipment-location {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #737d8e;
-  font-size: 8px;
-  line-height: 1.35;
-}
-
-.shipment-location svg {
-  flex-shrink: 0;
-  color: #9a7aff;
-}
-
 /* Progress */
 
 .shipment-progress {
@@ -719,7 +703,7 @@
   background: rgba(255, 80, 80, 0.1);
 }
 
-/* Actions */
+/* Status update control */
 
 .shipment-table td:last-child {
   white-space: nowrap;
@@ -756,7 +740,7 @@
 
 .shipment-bottom-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 13px;
   margin-top: 16px;
 }
@@ -782,11 +766,6 @@
 .orange-bottom {
   color: #ff9a54;
   background: rgba(255, 137, 63, 0.1);
-}
-
-.purple-bottom {
-  color: #a989ff;
-  background: rgba(143, 102, 255, 0.1);
 }
 
 .green-bottom {
@@ -845,8 +824,6 @@
     );
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
 }
-
-/* Generic modal content styling */
 
 .shipment-modal-backdrop h2 {
   margin: 0;

@@ -28,6 +28,12 @@ public class UserController {
         return ResponseEntity.ok(currentUser);
     }
 
+    @GetMapping
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ResponseEntity<List<UserDto>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
+    }
+
     @GetMapping("/operators")
     public ResponseEntity<List<UserDto>> getLogisticsOperators() {
         return ResponseEntity.ok(userService.getLogisticsOperators());

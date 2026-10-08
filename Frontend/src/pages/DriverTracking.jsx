@@ -1,6 +1,12 @@
 
 import { Link } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowLeft,
   Bell,
@@ -14,14 +20,57 @@ import {
   UserRound,
   AlertTriangle,
   MoreHorizontal,
-  Phone,
   Gauge,
 } from "lucide-react";
 
+import {
+  CircleMarker,
+  MapContainer,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+
 import { apiRequest } from "../api";
+import "leaflet/dist/leaflet.css";
 import "./DriverTracking.css";
 
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+});
+
 const LOCATION_REFRESH_INTERVAL = 15000;
+const ACTIVE_DELIVERY_STATUSES = [
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
+];
+const DELIVERY_STATUSES = [
+  "CREATED",
+  "PICKED_UP",
+  "IN_TRANSIT",
+  "OUT_FOR_DELIVERY",
+  "DELIVERED",
+  "FAILED_DELIVERY",
+  "CANCELLED",
+];
+const STATUS_COLORS = [
+  "#579cff",
+  "#8e7bff",
+  "#36dcb0",
+  "#37d9e8",
+  "#49c58e",
+  "#ff6476",
+  "#8490a7",
+];
 
 function hasCoordinates(location) {
   return (
@@ -36,12 +85,59 @@ function hasCoordinates(location) {
   );
 }
 
-function summarizeSpeed(locationHistory) {
+function isValidLocationRecord(location, assignedOperatorId) {
+  const recordedAt = new Date(location?.recordedAt).getTime();
+  return (
+    hasCoordinates(location) &&
+    !(Number(location.latitude) === 0 && Number(location.longitude) === 0) &&
+    Number.isFinite(recordedAt) &&
+    Number(location.recordedByOperatorId) === Number(assignedOperatorId)
+  );
+}
+
+function getLatestValidLocation(history, assignedOperatorId) {
+  if (!Array.isArray(history) || history.length === 0) return null;
+
+  const [latestRecord] = history;
+  return isValidLocationRecord(latestRecord, assignedOperatorId)
+    ? latestRecord
+    : null;
+}
+
+function mergeLocationHistory(serverHistory, currentHistory, currentLocation) {
+  const records = new Map();
+  [
+    ...(Array.isArray(serverHistory) ? serverHistory : []),
+    ...(Array.isArray(currentHistory) ? currentHistory : []),
+    ...(currentLocation ? [currentLocation] : []),
+  ].forEach((location) => {
+    if (!location) return;
+    const recordKey =
+      location.id != null
+        ? `id:${location.id}`
+        : `${location.recordedAt}:${location.latitude}:${location.longitude}`;
+    const existing = records.get(recordKey);
+    if (
+      !existing ||
+      new Date(location.recordedAt || 0) >=
+        new Date(existing.recordedAt || 0)
+    ) {
+      records.set(recordKey, location);
+    }
+  });
+
+  return [...records.values()].sort(
+    (first, second) =>
+      new Date(second.recordedAt || 0) -
+      new Date(first.recordedAt || 0)
+  );
+}
+
+function summarizeSpeed(locationHistory, assignedOperatorId) {
   const points = (Array.isArray(locationHistory) ? locationHistory : [])
-    .filter((location) => {
-      const recordedAt = new Date(location?.recordedAt).getTime();
-      return hasCoordinates(location) && Number.isFinite(recordedAt);
-    })
+    .filter((location) =>
+      isValidLocationRecord(location, assignedOperatorId)
+    )
     .map((location) => ({
       latitude: Number(location.latitude),
       longitude: Number(location.longitude),
@@ -49,15 +145,12 @@ function summarizeSpeed(locationHistory) {
     }))
     .sort((first, second) => first.recordedAt - second.recordedAt);
 
-  let distanceKm = 0;
-  let elapsedHours = 0;
-
+  const segmentSpeeds = [];
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1];
     const current = points[index];
     const intervalHours =
       (current.recordedAt - previous.recordedAt) / 3600000;
-
     if (intervalHours <= 0) continue;
 
     const radians = (degrees) => (degrees * Math.PI) / 180;
@@ -69,40 +162,434 @@ function summarizeSpeed(locationHistory) {
         Math.cos(radians(current.latitude)) *
         Math.sin(longitudeDelta / 2) ** 2;
     const boundedHaversine = Math.min(1, Math.max(0, haversine));
-    const distance =
+    const distanceKm =
       6371 *
       2 *
       Math.atan2(
         Math.sqrt(boundedHaversine),
         Math.sqrt(1 - boundedHaversine)
       );
+    const speedKmh = distanceKm / intervalHours;
 
-    distanceKm += distance;
-    elapsedHours += intervalHours;
+    if (Number.isFinite(speedKmh) && speedKmh <= 200) {
+      segmentSpeeds.push(speedKmh);
+    }
   }
 
-  return {
-    speedKmh: elapsedHours > 0 ? distanceKm / elapsedHours : null,
-    distanceKm,
-    elapsedHours,
-  };
+  return segmentSpeeds.length > 0
+    ? segmentSpeeds.reduce((total, speed) => total + speed, 0) /
+        segmentSpeeds.length
+    : null;
+}
+
+function getRouteCoordinates(route) {
+  if (!route?.geometry) return [];
+
+  try {
+    const geometry =
+      typeof route.geometry === "string"
+        ? JSON.parse(route.geometry)
+        : route.geometry;
+    const lineString =
+      geometry?.type === "Feature" ? geometry.geometry : geometry;
+    if (
+      lineString?.type !== "LineString" ||
+      !Array.isArray(lineString.coordinates)
+    ) {
+      return [];
+    }
+
+    if (
+      lineString.coordinates.length < 2 ||
+      lineString.coordinates.some(
+        (coordinate) =>
+          !Array.isArray(coordinate) ||
+          coordinate.length < 2 ||
+          !hasCoordinates({
+            latitude: coordinate[1],
+            longitude: coordinate[0],
+          }) ||
+          (Number(coordinate[1]) === 0 && Number(coordinate[0]) === 0)
+      )
+    ) {
+      return [];
+    }
+
+    return lineString.coordinates.map(([longitude, latitude]) => [
+      Number(latitude),
+      Number(longitude),
+    ]);
+  } catch (error) {
+    console.error("Failed to parse saved route geometry:", error);
+    return [];
+  }
+}
+
+function FitMapToPoints({ points, fitKey, mapRef }) {
+  const map = useMap();
+  const pointsKey = points.map((point) => point.join(",")).join("|");
+  const fittedKeyRef = useRef(null);
+
+  useEffect(() => {
+    mapRef.current = map;
+    if (fittedKeyRef.current === fitKey) return;
+
+    const currentPoints = pointsKey
+      .split("|")
+      .filter(Boolean)
+      .map((point) => point.split(",").map(Number));
+
+    if (currentPoints.length === 1) {
+      map.setView(currentPoints[0], 15);
+    } else if (currentPoints.length > 1) {
+      map.fitBounds(L.latLngBounds(currentPoints), {
+        padding: [48, 48],
+        maxZoom: 15,
+      });
+    }
+
+    fittedKeyRef.current = fitKey;
+  }, [map, mapRef, pointsKey, fitKey]);
+
+  useEffect(
+    () => () => {
+      mapRef.current = null;
+    },
+    [mapRef]
+  );
+
+  return null;
+}
+
+function PanMapToCurrentLocation({ shipmentId, location }) {
+  const map = useMap();
+  const previousFixRef = useRef(null);
+
+  useEffect(() => {
+    const currentFix = `${location.latitude},${location.longitude}`;
+    if (previousFixRef.current?.shipmentId !== String(shipmentId)) {
+      previousFixRef.current = {
+        shipmentId: String(shipmentId),
+        coordinates: currentFix,
+      };
+      return;
+    }
+
+    if (previousFixRef.current.coordinates !== currentFix) {
+      previousFixRef.current.coordinates = currentFix;
+      map.panTo([Number(location.latitude), Number(location.longitude)], {
+        animate: true,
+      });
+    }
+  }, [map, shipmentId, location.latitude, location.longitude]);
+
+  return null;
 }
 
 function DriverTracking() {
   const [shipments, setShipments] = useState([]);
   const [locations, setLocations] = useState({});
   const [locationHistories, setLocationHistories] = useState({});
+  const [routes, setRoutes] = useState({});
+  const [etas, setEtas] = useState({});
+  const [selectedShipmentId, setSelectedShipmentId] = useState("");
+  const [gpsTrackingShipmentId, setGpsTrackingShipmentId] = useState(null);
+  const [gpsStatus, setGpsStatus] = useState("idle");
+  const [gpsError, setGpsError] = useState("");
+  const [gpsLastUpdated, setGpsLastUpdated] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [loadError, setLoadError] = useState("");
   const requestInProgress = useRef(false);
-  const mapRef = useRef(null);
+  const etaRefreshSequence = useRef(0);
+  const mountedRef = useRef(false);
+  const mapContainerRef = useRef(null);
+  const leafletMapRef = useRef(null);
+  const gpsWatchIdRef = useRef(null);
+  const gpsSessionRef = useRef(0);
+  const gpsQueueRef = useRef(null);
+  const gpsRequestInProgressRef = useRef(false);
+  const latestGpsLocationsRef = useRef({});
+
+  const refreshEtas = useCallback(async (shipmentList, routeData, locationData) => {
+    const refreshId = ++etaRefreshSequence.current;
+
+    try {
+      const results = await Promise.all(
+        shipmentList.map(async (shipment) => {
+          const route = routeData[shipment.id];
+          const location = locationData[shipment.id];
+          const hasDestination = hasCoordinates({
+            latitude: route?.destinationLatitude,
+            longitude: route?.destinationLongitude,
+          });
+          if (
+            !route ||
+            !hasDestination ||
+            !isValidLocationRecord(location, shipment.assignedOperatorId) ||
+            !ACTIVE_DELIVERY_STATUSES.includes(shipment.status)
+          ) {
+            return [shipment.id, null];
+          }
+
+          try {
+            const eta = await apiRequest(`/api/shipments/${shipment.id}/eta`, {
+              method: "POST",
+              body: JSON.stringify({
+                destination: {
+                  latitude: Number(route.destinationLatitude),
+                  longitude: Number(route.destinationLongitude),
+                },
+              }),
+            });
+            const expectedCompletionTime = eta?.expectedCompletionTime;
+            const expectedTime = expectedCompletionTime
+              ? new Date(expectedCompletionTime).getTime()
+              : Number.NaN;
+
+            return Number(eta?.shipmentId) === Number(shipment.id) &&
+              Number.isFinite(expectedTime)
+              ? [shipment.id, eta]
+              : [shipment.id, { requestFailed: true }];
+          } catch (error) {
+            console.error(
+              `Failed to load ETA for shipment ${shipment.id}:`,
+              error
+            );
+            return [shipment.id, { requestFailed: true }];
+          }
+        })
+      );
+
+      if (
+        mountedRef.current &&
+        refreshId === etaRefreshSequence.current
+      ) {
+        setEtas(Object.fromEntries(results));
+      }
+    } catch (error) {
+      console.error("Failed to refresh shipment ETAs:", error);
+    }
+  }, []);
+
+  const stopGpsTracking = useCallback(() => {
+    gpsSessionRef.current += 1;
+    if (
+      gpsWatchIdRef.current != null &&
+      navigator.geolocation?.clearWatch
+    ) {
+      navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+    }
+    gpsWatchIdRef.current = null;
+    gpsQueueRef.current = null;
+    setGpsTrackingShipmentId(null);
+    setGpsStatus("idle");
+  }, []);
+
+  const flushGpsQueue = useCallback(async () => {
+    if (gpsRequestInProgressRef.current) return;
+    gpsRequestInProgressRef.current = true;
+
+    try {
+      while (gpsQueueRef.current) {
+        const update = gpsQueueRef.current;
+        gpsQueueRef.current = null;
+
+        if (
+          update.sessionId !== gpsSessionRef.current ||
+          !mountedRef.current
+        ) {
+          continue;
+        }
+
+        try {
+          const savedLocation = await apiRequest(
+            `/api/shipments/${update.shipmentId}/location`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({
+                latitude: update.latitude,
+                longitude: update.longitude,
+              }),
+            }
+          );
+
+          if (
+            update.sessionId !== gpsSessionRef.current ||
+            !mountedRef.current
+          ) {
+            continue;
+          }
+
+          if (
+            !isValidLocationRecord(
+              savedLocation,
+              update.assignedOperatorId
+            )
+          ) {
+            throw new Error(
+              "The location API returned an invalid saved GPS record."
+            );
+          }
+
+          latestGpsLocationsRef.current[update.shipmentId] =
+            savedLocation;
+          setLocations((previous) => {
+            const current = previous[update.shipmentId];
+            const currentTime = new Date(current?.recordedAt || 0).getTime();
+            const savedTime = new Date(savedLocation.recordedAt).getTime();
+            return savedTime >= currentTime
+              ? { ...previous, [update.shipmentId]: savedLocation }
+              : previous;
+          });
+          setLocationHistories((previous) => ({
+            ...previous,
+            [update.shipmentId]: mergeLocationHistory(
+              previous[update.shipmentId],
+              [],
+              savedLocation
+            ),
+          }));
+          setGpsLastUpdated(savedLocation.recordedAt);
+          setGpsStatus("active");
+          setGpsError("");
+        } catch (error) {
+          console.error("Failed to save live GPS location:", error);
+          if (
+            update.sessionId === gpsSessionRef.current &&
+            mountedRef.current
+          ) {
+            if (error?.status === 403) {
+              stopGpsTracking();
+              setGpsStatus("error");
+              setGpsError(
+                "GPS update denied. This shipment is no longer assigned to this operator."
+              );
+              continue;
+            }
+            setGpsStatus("error");
+            setGpsError(`GPS location could not be saved: ${error.message}`);
+          }
+        }
+      }
+    } finally {
+      gpsRequestInProgressRef.current = false;
+    }
+  }, [stopGpsTracking]);
+
+  const startGpsTracking = useCallback(
+    (shipment, operatorId) => {
+      if (!shipment || !ACTIVE_DELIVERY_STATUSES.includes(shipment.status)) {
+        setGpsError("GPS tracking is available only for active assigned shipments.");
+        return;
+      }
+
+      if (
+        Number(shipment.assignedOperatorId) !== Number(operatorId)
+      ) {
+        setGpsError("GPS tracking is available only for shipments assigned to this operator.");
+        return;
+      }
+
+      if (!window.isSecureContext && window.location.hostname !== "localhost") {
+        setGpsStatus("error");
+        setGpsError(
+          "Browser GPS requires a secure HTTPS connection (localhost is also supported)."
+        );
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        setGpsStatus("error");
+        setGpsError("This browser does not provide GPS location services.");
+        return;
+      }
+
+      if (gpsWatchIdRef.current != null) stopGpsTracking();
+      const sessionId = ++gpsSessionRef.current;
+      setGpsTrackingShipmentId(shipment.id);
+      setGpsStatus("requesting");
+      setGpsError("");
+      setGpsLastUpdated(null);
+
+      try {
+        gpsWatchIdRef.current = navigator.geolocation.watchPosition(
+          (position) => {
+            if (
+              sessionId !== gpsSessionRef.current ||
+              !mountedRef.current
+            ) {
+              return;
+            }
+
+            const { latitude, longitude } = position.coords;
+            if (
+              !hasCoordinates({ latitude, longitude }) ||
+              (Number(latitude) === 0 && Number(longitude) === 0)
+            ) {
+              setGpsStatus("error");
+              setGpsError("The browser returned invalid GPS coordinates.");
+              return;
+            }
+
+            gpsQueueRef.current = {
+              sessionId,
+              shipmentId: shipment.id,
+              assignedOperatorId: operatorId,
+              latitude: Number(latitude),
+              longitude: Number(longitude),
+            };
+            setGpsStatus((current) =>
+              current === "requesting" ? "connecting" : current
+            );
+            void flushGpsQueue();
+          },
+          (error) => {
+            if (
+              sessionId !== gpsSessionRef.current ||
+              !mountedRef.current
+            ) {
+              return;
+            }
+
+            const message =
+              error.code === 1
+                ? "GPS permission was denied. Allow location access in browser settings, then start tracking again."
+                : error.code === 2
+                  ? "The device could not determine a GPS location. Move to an area with GPS reception and retry."
+                  : error.code === 3
+                    ? "GPS location request timed out. Tracking will continue trying."
+                    : "The browser could not read GPS location.";
+            setGpsStatus("error");
+            setGpsError(message);
+
+            if (error.code === 1) {
+              stopGpsTracking();
+              setGpsStatus("error");
+              setGpsError(message);
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 20000,
+          }
+        );
+      } catch (error) {
+        console.error("Unable to start browser GPS tracking:", error);
+        stopGpsTracking();
+        setGpsStatus("error");
+        setGpsError(`GPS tracking could not start: ${error.message}`);
+      }
+    },
+    [flushGpsQueue, stopGpsTracking]
+  );
 
   const loadData = useCallback(async (showLoading = false) => {
     if (requestInProgress.current) return;
     requestInProgress.current = true;
-    if (showLoading) setLoading(true);
+    if (mountedRef.current && showLoading) setLoading(true);
 
     try {
       const [user, shipmentData] = await Promise.all([
@@ -118,20 +605,17 @@ function DriverTracking() {
         (shipment) =>
           Number(shipment?.assignedOperatorId) === Number(user?.id)
       );
-
-      setCurrentUser(user);
-      setShipments(shipmentList);
-
-      let hasLocationError = false;
-      const locationResults = await Promise.all(
+      const trackingErrors = [];
+      const trackingResults = await Promise.all(
         shipmentList.map(async (shipment) => {
-          const [locationResult, historyResult] = await Promise.allSettled([
+          const [locationResult, historyResult, routeResult] = await Promise.allSettled([
             apiRequest(`/api/shipments/${shipment.id}/location`),
             apiRequest(`/api/shipments/${shipment.id}/location-history`),
+            apiRequest(`/api/routes/shipment/${shipment.id}`),
           ]);
 
           if (locationResult.status === "rejected") {
-            hasLocationError = true;
+            trackingErrors.push("A current location could not be loaded.");
             console.error(
               `Failed to load current location for shipment ${shipment.id}:`,
               locationResult.reason
@@ -139,7 +623,7 @@ function DriverTracking() {
           }
 
           if (historyResult.status === "rejected") {
-            hasLocationError = true;
+            trackingErrors.push("A location history could not be loaded.");
             console.error(
               `Failed to load location history for shipment ${shipment.id}:`,
               historyResult.reason
@@ -151,66 +635,147 @@ function DriverTracking() {
             Array.isArray(historyResult.value)
               ? historyResult.value
               : [];
-          const currentLocation =
+          const latestHistoryLocation = getLatestValidLocation(
+            history,
+            shipment.assignedOperatorId
+          );
+          const locationResponse =
             locationResult.status === "fulfilled"
               ? locationResult.value
               : null;
-          const latestHistoryLocation = [...history].sort(
-            (first, second) =>
-              new Date(second?.recordedAt || 0) -
-              new Date(first?.recordedAt || 0)
-          )[0];
+          const location = isValidLocationRecord(
+            locationResponse,
+            shipment.assignedOperatorId
+          )
+            ? locationResponse
+            : locationResponse == null
+              ? latestHistoryLocation
+              : null;
+          const route =
+            routeResult.status === "fulfilled" &&
+            Number(routeResult.value?.shipmentId) === Number(shipment.id)
+              ? routeResult.value
+              : null;
+
+          if (
+            routeResult.status === "rejected" &&
+            routeResult.reason?.status !== 404
+          ) {
+            trackingErrors.push("A saved route could not be loaded.");
+            console.error(
+              `Failed to load route for shipment ${shipment.id}:`,
+              routeResult.reason
+            );
+          } else if (
+            routeResult.status === "fulfilled" &&
+            routeResult.value != null &&
+            route == null
+          ) {
+            trackingErrors.push("A route did not match its assigned shipment.");
+          }
 
           return {
             shipmentId: shipment.id,
-            location: currentLocation || latestHistoryLocation || null,
+            location,
             history,
+            route,
           };
         })
       );
 
-      setLocations(
+      if (!mountedRef.current) return;
+
+      setCurrentUser(user);
+      setShipments(shipmentList);
+      setLocations((previous) =>
         Object.fromEntries(
-          locationResults.map(({ shipmentId, location }) => [
+          trackingResults.map(({ shipmentId, location }) => {
+            const freshestLocation = [
+              previous[shipmentId],
+              location,
+              latestGpsLocationsRef.current[shipmentId],
+            ]
+              .filter(Boolean)
+              .reduce((freshest, candidate) => {
+                if (!freshest) return candidate;
+                const freshestTime = new Date(
+                  freshest.recordedAt || 0
+                ).getTime();
+                const candidateTime = new Date(
+                  candidate.recordedAt || 0
+                ).getTime();
+                return candidateTime >= freshestTime
+                  ? candidate
+                  : freshest;
+              }, null);
+            return [shipmentId, freshestLocation];
+          })
+        )
+      );
+      setLocationHistories((previous) =>
+        Object.fromEntries(
+          trackingResults.map(({ shipmentId, history, location }) => [
+            shipmentId,
+            mergeLocationHistory(
+              history,
+              previous[shipmentId],
+              location
+            ),
+          ])
+        )
+      );
+      setRoutes(
+        Object.fromEntries(
+          trackingResults.map(({ shipmentId, route }) => [shipmentId, route])
+        )
+      );
+      void refreshEtas(
+        shipmentList,
+        Object.fromEntries(
+          trackingResults.map(({ shipmentId, route }) => [shipmentId, route])
+        ),
+        Object.fromEntries(
+          trackingResults.map(({ shipmentId, location }) => [
             shipmentId,
             location,
           ])
         )
       );
-      setLocationHistories(
-        Object.fromEntries(
-          locationResults.map(({ shipmentId, history }) => [
-            shipmentId,
-            history,
-          ])
-        )
-      );
-      setLoadError(
-        hasLocationError ? "Some location updates could not be loaded." : ""
-      );
+      setLoadError([...new Set(trackingErrors)].join(" "));
     } catch (error) {
       console.error("Failed to load driver tracking data:", error);
-      setLoadError("Driver location data could not be refreshed.");
+      if (mountedRef.current) {
+        setLoadError("Driver tracking data could not be refreshed.");
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
       requestInProgress.current = false;
     }
-  }, []);
+  }, [refreshEtas]);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadData(true);
     const refreshTimer = window.setInterval(
       () => loadData(),
       LOCATION_REFRESH_INTERVAL
     );
 
-    return () => window.clearInterval(refreshTimer);
+    return () => {
+      mountedRef.current = false;
+      window.clearInterval(refreshTimer);
+      gpsSessionRef.current += 1;
+      if (
+        gpsWatchIdRef.current != null &&
+        navigator.geolocation?.clearWatch
+      ) {
+        navigator.geolocation.clearWatch(gpsWatchIdRef.current);
+      }
+      gpsWatchIdRef.current = null;
+      gpsQueueRef.current = null;
+      latestGpsLocationsRef.current = {};
+    };
   }, [loadData]);
-
-  const centerMap = () => {
-    mapRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    loadData();
-  };
 
   const operatorName =
     currentUser?.name ||
@@ -227,136 +792,160 @@ function DriverTracking() {
     .join("")
     .toUpperCase();
 
-  /*
-   * Build drivers from the shipments returned by the backend.
-   * One operator can have multiple shipments.
-   */
-  const drivers = useMemo(() => {
-    const grouped = new Map();
+  const drivers = shipments
+    .filter((shipment) => shipment.assignedOperatorId != null)
+    .map((shipment) => ({
+      id: shipment.id,
+      operatorId: shipment.assignedOperatorId,
+      name:
+        shipment.assignedOperatorName ||
+        (Number(shipment.assignedOperatorId) === Number(currentUser?.id)
+          ? operatorName
+          : `Operator #${shipment.assignedOperatorId}`),
+      shipment,
+      location: locations[shipment.id] || null,
+      route: routes[shipment.id] || null,
+      eta: etas[shipment.id] || null,
+      speedKmh: summarizeSpeed(
+        locationHistories[shipment.id],
+        shipment.assignedOperatorId
+      ),
+    }));
 
-    shipments.forEach((shipment) => {
-      if (!shipment.assignedOperatorId) {
-        return;
-      }
-
-      const operatorId = shipment.assignedOperatorId;
-
-      if (!grouped.has(operatorId)) {
-        grouped.set(operatorId, {
-          id: operatorId,
-          name:
-            shipment.assignedOperatorName ||
-            `Operator #${operatorId}`,
-          shipments: [],
-        });
-      }
-
-      grouped.get(operatorId).shipments.push(shipment);
-    });
-
-    return Array.from(grouped.values()).map((driver) => {
-      const activeShipments = driver.shipments.filter(
-        (shipment) =>
-          shipment.status !== "DELIVERED" &&
-          shipment.status !== "CANCELLED"
-      );
-      const candidateShipments =
-        activeShipments.length > 0 ? activeShipments : driver.shipments;
-
-      const selectedShipment = [...candidateShipments].sort((first, second) => {
-        const firstLocation = locations[first.id];
-        const secondLocation = locations[second.id];
-        const firstHasLocation = hasCoordinates(firstLocation);
-        const secondHasLocation = hasCoordinates(secondLocation);
-
-        if (firstHasLocation !== secondHasLocation) {
-          return firstHasLocation ? -1 : 1;
-        }
-
-        if (firstHasLocation && secondHasLocation) {
-          const locationTimeDifference =
-            new Date(secondLocation.recordedAt || 0) -
-            new Date(firstLocation.recordedAt || 0);
-          if (locationTimeDifference !== 0) return locationTimeDifference;
-        }
-
-        return (
-          new Date(second.updatedAt || second.createdAt || 0) -
-          new Date(first.updatedAt || first.createdAt || 0)
-        );
-      })[0];
-      const speedTotals = driver.shipments.reduce(
-        (result, shipment) => {
-          const summary = summarizeSpeed(locationHistories[shipment.id]);
-          return {
-            distanceKm: result.distanceKm + summary.distanceKm,
-            elapsedHours: result.elapsedHours + summary.elapsedHours,
-          };
-        },
-        { distanceKm: 0, elapsedHours: 0 }
-      );
-      const latestLocationShipment = [...driver.shipments]
-        .filter((shipment) => hasCoordinates(locations[shipment.id]))
-        .sort(
-          (first, second) =>
-            new Date(locations[second.id]?.recordedAt || 0) -
-            new Date(locations[first.id]?.recordedAt || 0)
-        )[0];
-
-      return {
-        ...driver,
-        shipment: selectedShipment,
-        location: selectedShipment
-          ? locations[selectedShipment.id]
-          : null,
-        latestLocation: latestLocationShipment
-          ? locations[latestLocationShipment.id]
-          : null,
-        latestLocationShipment,
-        speedKmh:
-          speedTotals.elapsedHours > 0
-            ? speedTotals.distanceKm / speedTotals.elapsedHours
-            : null,
-      };
-    });
-  }, [shipments, locations, locationHistories]);
-
-  const activeDrivers = drivers.filter(
-    (driver) =>
-      driver.shipment &&
-      driver.shipment.status !== "DELIVERED" &&
-      driver.shipment.status !== "CANCELLED"
+  const isActiveShipment = (shipment) =>
+    ACTIVE_DELIVERY_STATUSES.includes(shipment?.status);
+  const activeDriverIds = new Set(
+    drivers
+      .filter((driver) => isActiveShipment(driver.shipment))
+      .map((driver) => driver.operatorId)
   );
-
-  const attentionShipments = shipments.filter(
-    (shipment) =>
-      shipment.status === "FAILED_DELIVERY" ||
-      shipment.status === "CANCELLED"
+  const onRoadDriverIds = new Set(
+    drivers
+      .filter((driver) => isActiveShipment(driver.shipment))
+      .map((driver) => driver.operatorId)
   );
-
   const attentionDriverIds = new Set(
-    attentionShipments
-      .map((shipment) => shipment.assignedOperatorId)
-      .filter(Boolean)
+    drivers
+      .filter((driver) =>
+        ["FAILED_DELIVERY", "CANCELLED"].includes(driver.shipment?.status)
+      )
+      .map((driver) => driver.operatorId)
   );
-
-  const mapDrivers = drivers.filter(
-    (driver) => hasCoordinates(driver.latestLocation)
+  const activeTrackingDrivers = drivers.filter((driver) =>
+    isActiveShipment(driver.shipment)
   );
-  const trackedLocations = mapDrivers.length;
+  const selectedDriver =
+    activeTrackingDrivers.find(
+      (driver) => String(driver.shipment.id) === String(selectedShipmentId)
+    ) || activeTrackingDrivers[0] || null;
+  const selectedShipment = selectedDriver?.shipment || null;
+  const selectedShipmentKey = selectedShipment?.id;
+  const selectedLocation = selectedDriver?.location || null;
+  const selectedRoute = selectedDriver?.route || null;
+  const selectedRouteCoordinates = getRouteCoordinates(selectedRoute);
+  const selectedShipmentOperatorId = selectedShipment?.assignedOperatorId;
+  const selectedShipmentStatus = selectedShipment?.status;
+  const destination = hasCoordinates({
+    latitude: selectedRoute?.destinationLatitude,
+    longitude: selectedRoute?.destinationLongitude,
+  })
+    ? {
+        latitude: Number(selectedRoute.destinationLatitude),
+        longitude: Number(selectedRoute.destinationLongitude),
+      }
+    : null;
+  const hasSelectedLocation = selectedDriver
+    ? isValidLocationRecord(
+        selectedLocation,
+        selectedDriver.shipment.assignedOperatorId
+      )
+    : false;
 
-  const speedDrivers = drivers.filter(
-    (driver) => driver.speedKmh != null
+  useEffect(() => {
+    if (
+      gpsTrackingShipmentId != null &&
+      (selectedShipmentKey == null ||
+        String(gpsTrackingShipmentId) !== String(selectedShipmentKey) ||
+        Number(selectedShipmentOperatorId) !==
+          Number(currentUser?.id) ||
+        !ACTIVE_DELIVERY_STATUSES.includes(selectedShipmentStatus))
+    ) {
+      stopGpsTracking();
+    }
+  }, [
+    gpsTrackingShipmentId,
+    selectedShipmentKey,
+    selectedShipmentOperatorId,
+    selectedShipmentStatus,
+    currentUser?.id,
+    stopGpsTracking,
+  ]);
+  const activeMapDrivers = activeTrackingDrivers.filter(
+    (driver) =>
+      isValidLocationRecord(
+        driver.location,
+        driver.shipment.assignedOperatorId
+      )
   );
-  const averageSpeed =
-    speedDrivers.length > 0
-      ? speedDrivers.reduce((total, driver) => total + driver.speedKmh, 0) /
-        speedDrivers.length
-      : null;
-
-  const totalDrivers = drivers.length;
-  const onRoadDrivers = activeDrivers.length;
+  const trackedLocations = activeMapDrivers.length;
+  const totalDrivers = new Set(drivers.map((driver) => driver.operatorId)).size;
+  const onRoadDrivers = onRoadDriverIds.size;
   const attentionDrivers = attentionDriverIds.size;
+  const averageSpeed = (() => {
+    const driversWithSpeed = activeTrackingDrivers.filter(
+      (driver) => driver.speedKmh != null
+    );
+    return driversWithSpeed.length > 0
+      ? driversWithSpeed.reduce((total, driver) => total + driver.speedKmh, 0) /
+          driversWithSpeed.length
+      : null;
+  })();
+
+  const statusCounts = DELIVERY_STATUSES.map((status) =>
+    shipments.filter((shipment) => shipment.status === status).length
+  );
+  const statusRingBackground = (() => {
+    const total = statusCounts.reduce((sum, count) => sum + count, 0);
+    if (total === 0) return "conic-gradient(#2b3140 0deg 360deg)";
+
+    let previousStop = 0;
+    const segments = statusCounts.map((count, index) => {
+      const nextStop = previousStop + (count / total) * 360;
+      const segment = `${STATUS_COLORS[index]} ${previousStop}deg ${nextStop}deg`;
+      previousStop = nextStop;
+      return segment;
+    });
+    return `conic-gradient(${segments.join(", ")})`;
+  })();
+
+  const mapPoints = [
+    ...(hasSelectedLocation
+      ? [[Number(selectedLocation.latitude), Number(selectedLocation.longitude)]]
+      : []),
+    ...selectedRouteCoordinates,
+    ...(destination ? [[destination.latitude, destination.longitude]] : []),
+  ];
+  const mapFitKey = JSON.stringify({
+    shipmentId: selectedShipment?.id,
+    route: selectedRouteCoordinates,
+    destination,
+  });
+  const selectedEta = selectedDriver?.eta;
+
+  const centerMap = () => {
+    mapContainerRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    if (mapPoints.length === 1) {
+      leafletMapRef.current?.setView(mapPoints[0], 15);
+    } else if (mapPoints.length > 1) {
+      leafletMapRef.current?.fitBounds(L.latLngBounds(mapPoints), {
+        padding: [48, 48],
+        maxZoom: 15,
+      });
+    }
+  };
 
   const utilization =
     totalDrivers > 0
@@ -386,9 +975,20 @@ function DriverTracking() {
       driverName.includes(query) ||
       trackingNumber.includes(query) ||
       referenceNumber.includes(query) ||
-      locationName.includes(query)
+      locationName.includes(query) ||
+      String(driver.operatorId).includes(query)
     );
   });
+  const activeFilteredDrivers = filteredDrivers.filter((driver) =>
+    isActiveShipment(driver.shipment)
+  );
+  const otherFilteredDrivers = filteredDrivers.filter(
+    (driver) => !isActiveShipment(driver.shipment)
+  );
+  const orderedFilteredDrivers = [
+    ...activeFilteredDrivers,
+    ...otherFilteredDrivers,
+  ];
 
   const getInitials = (name) =>
     name
@@ -401,7 +1001,7 @@ function DriverTracking() {
 
   const getStatusLabel = (status) => {
     if (!status) {
-      return "Unknown";
+      return "Not available";
     }
 
     return status
@@ -423,70 +1023,6 @@ function DriverTracking() {
     }
 
     return "status-route";
-  };
-
-  const getProgress = (status) => {
-    switch (status) {
-      case "DELIVERED":
-        return 100;
-      case "OUT_FOR_DELIVERY":
-        return 75;
-      case "IN_TRANSIT":
-        return 50;
-      case "PICKED_UP":
-        return 25;
-      default:
-        return 0;
-    }
-  };
-
-  const mapBounds = mapDrivers.reduce(
-    (bounds, driver) => ({
-      minLatitude: Math.min(
-        bounds.minLatitude,
-        Number(driver.latestLocation.latitude)
-      ),
-      maxLatitude: Math.max(
-        bounds.maxLatitude,
-        Number(driver.latestLocation.latitude)
-      ),
-      minLongitude: Math.min(
-        bounds.minLongitude,
-        Number(driver.latestLocation.longitude)
-      ),
-      maxLongitude: Math.max(
-        bounds.maxLongitude,
-        Number(driver.latestLocation.longitude)
-      ),
-    }),
-    {
-      minLatitude: Infinity,
-      maxLatitude: -Infinity,
-      minLongitude: Infinity,
-      maxLongitude: -Infinity,
-    }
-  );
-
-  const getMapPosition = (location) => {
-    const latitudeRange =
-      mapBounds.maxLatitude - mapBounds.minLatitude;
-    const longitudeRange =
-      mapBounds.maxLongitude - mapBounds.minLongitude;
-    const latitudeRatio =
-      latitudeRange > 0
-        ? (Number(location.latitude) - mapBounds.minLatitude) /
-          latitudeRange
-        : 0.5;
-    const longitudeRatio =
-      longitudeRange > 0
-        ? (Number(location.longitude) - mapBounds.minLongitude) /
-          longitudeRange
-        : 0.5;
-
-    return {
-      left: `${10 + longitudeRatio * 80}%`,
-      top: `${90 - latitudeRatio * 80}%`,
-    };
   };
 
   return (
@@ -524,7 +1060,7 @@ function DriverTracking() {
           <Link to="/operator/live-delivery">
             <Radio size={18} />
             Live Deliveries
-            <b>{activeDrivers.length}</b>
+            <b>{activeDriverIds.size}</b>
           </Link>
 
           <Link to="/dashboard/operator">
@@ -608,7 +1144,7 @@ function DriverTracking() {
                 <h1>Driver Tracking</h1>
 
                 <p>
-                  Monitor driver locations, vehicle movement
+                  Monitor assigned operator locations, shipment routes
                   and delivery progress in real time.
                 </p>
 
@@ -616,7 +1152,11 @@ function DriverTracking() {
 
               <div className="driver-live-badge">
                 <span></span>
-                LIVE TRACKING
+                {loadError
+                  ? "TRACKING ERROR"
+                  : loading
+                    ? "LOADING TRACKING"
+                    : "LIVE TRACKING"}
               </div>
 
             </div>
@@ -636,7 +1176,11 @@ function DriverTracking() {
               disabled={loading}
             >
               <Radio size={16} />
-              Tracking Active
+              {loadError
+                ? "Tracking Error"
+                : loading
+                  ? "Refreshing..."
+                  : "Tracking Active"}
             </button>
 
           </div>
@@ -769,62 +1313,355 @@ function DriverTracking() {
 
             </div>
 
-
-            <div className="driver-map" ref={mapRef}>
-
-              <div className="driver-map-grid"></div>
-
-              <div className="driver-map-road map-road-a"></div>
-              <div className="driver-map-road map-road-b"></div>
-              <div className="driver-map-road map-road-c"></div>
-              <div className="driver-map-road map-road-d"></div>
-
-              {mapDrivers
-                .map((driver) => {
-                  const position = getMapPosition(driver.latestLocation);
-
-                  return (
-                    <div
-                      key={driver.id}
-                      className="driver-marker"
-                      style={{
-                        left: position.left,
-                        top: position.top,
-                      }}
-                      title={`${driver.name} - ${
-                        driver.latestLocation.locationName ||
-                        `${driver.latestLocation.latitude}, ${driver.latestLocation.longitude}`
-                      }${
-                        driver.latestLocation.recordedAt
-                          ? ` (recorded ${driver.latestLocation.recordedAt})`
-                          : ""
-                      }`}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                marginTop: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <label htmlFor="driver-tracking-shipment">
+                Active shipment
+              </label>
+              <select
+                id="driver-tracking-shipment"
+                className="driver-filter"
+                value={selectedShipment?.id || ""}
+                onChange={(event) => {
+                  stopGpsTracking();
+                  setGpsError("");
+                  setGpsLastUpdated(null);
+                  setSelectedShipmentId(event.target.value);
+                }}
+                disabled={activeTrackingDrivers.length === 0}
+              >
+                {activeTrackingDrivers.length === 0 ? (
+                  <option value="">No active shipments</option>
+                ) : (
+                  activeTrackingDrivers.map((driver) => (
+                    <option
+                      key={driver.shipment.id}
+                      value={driver.shipment.id}
                     >
-                      <Truck size={14} />
-                    </div>
-                  );
-                })}
+                      {driver.shipment.trackingNumber ||
+                        `Shipment #${driver.shipment.id}`}
+                    </option>
+                  ))
+                )}
+              </select>
+              {selectedShipment && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="driver-filter"
+                    onClick={() =>
+                      startGpsTracking(
+                        selectedShipment,
+                        currentUser?.id
+                      )
+                    }
+                    disabled={
+                      !currentUser?.id ||
+                      !ACTIVE_DELIVERY_STATUSES.includes(
+                        selectedShipment.status
+                      ) ||
+                      Number(selectedShipment.assignedOperatorId) !==
+                        Number(currentUser?.id) ||
+                      gpsTrackingShipmentId != null
+                    }
+                    aria-label="Start GPS tracking for selected shipment"
+                  >
+                    <Navigation size={14} />
+                    Start GPS Tracking
+                  </button>
+                  <button
+                    type="button"
+                    className="driver-filter"
+                    onClick={stopGpsTracking}
+                    disabled={
+                      String(gpsTrackingShipmentId) !==
+                      String(selectedShipment.id)
+                    }
+                    aria-label="Stop GPS tracking for selected shipment"
+                  >
+                    <Radio size={14} />
+                    Stop GPS Tracking
+                  </button>
+                </div>
+              )}
+            </div>
 
+            {selectedShipment && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  marginTop: "10px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>
+                  Delivery destination:{" "}
+                  {selectedShipment.receiverAddress || "Not available"}
+                </span>
+                <span>
+                  ETA:{" "}
+                  {selectedEta?.expectedCompletionTime &&
+                  Number(selectedEta.shipmentId) ===
+                    Number(selectedShipment.id) &&
+                  Number.isFinite(
+                    new Date(selectedEta.expectedCompletionTime).getTime()
+                  )
+                    ? new Date(
+                        selectedEta.expectedCompletionTime
+                      ).toLocaleString()
+                    : selectedEta?.requestFailed
+                      ? "Could not be loaded"
+                      : "Not available"}
+                </span>
+                <span>
+                  GPS status:{" "}
+                  {gpsTrackingShipmentId != null &&
+                  String(gpsTrackingShipmentId) ===
+                    String(selectedShipment.id)
+                    ? gpsStatus === "active"
+                      ? "GPS Active"
+                      : gpsStatus === "requesting"
+                        ? "Requesting permission..."
+                        : gpsStatus === "connecting"
+                          ? "Waiting for GPS fix..."
+                          : gpsStatus === "error"
+                            ? "GPS Error"
+                            : "GPS Starting"
+                    : "Stopped"}
+                </span>
+                <span>
+                  Last updated:{" "}
+                  {gpsLastUpdated &&
+                  String(gpsTrackingShipmentId) ===
+                    String(selectedShipment.id)
+                    ? new Date(gpsLastUpdated).toLocaleString()
+                    : "Not updated by live GPS"}
+                </span>
+              </div>
+            )}
+            {gpsError && (
+              <div
+                role="alert"
+                style={{ marginTop: "8px", color: "#ff8c96" }}
+              >
+                {gpsError}
+              </div>
+            )}
 
-              <div className="driver-map-info">
+            <div className="driver-map" ref={mapContainerRef}>
+              {selectedShipment && hasSelectedLocation ? (
+                <MapContainer
+                  center={[
+                    Number(selectedLocation.latitude),
+                    Number(selectedLocation.longitude),
+                  ]}
+                  zoom={15}
+                  scrollWheelZoom
+                  style={{ width: "100%", height: "100%" }}
+                >
+                  <FitMapToPoints
+                    points={mapPoints}
+                    fitKey={mapFitKey}
+                    mapRef={leafletMapRef}
+                  />
+                  <PanMapToCurrentLocation
+                    shipmentId={selectedShipment.id}
+                    location={selectedLocation}
+                  />
+                  <TileLayer
+                    attribution="&copy; OpenStreetMap contributors"
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
 
+                  {selectedRouteCoordinates.length > 1 && (
+                    <Polyline
+                      positions={selectedRouteCoordinates}
+                      pathOptions={{
+                        color: "#36dcb0",
+                        weight: 6,
+                        opacity: 0.9,
+                      }}
+                    >
+                      <Popup>
+                        <strong>
+                          Actual delivery route:{" "}
+                          {selectedShipment.trackingNumber ||
+                            `Shipment #${selectedShipment.id}`}
+                        </strong>
+                        <br />
+                        {selectedRoute?.origin} →{" "}
+                        {selectedShipment.receiverAddress}
+                      </Popup>
+                    </Polyline>
+                  )}
+
+                  <CircleMarker
+                    center={[
+                      Number(selectedLocation.latitude),
+                      Number(selectedLocation.longitude),
+                    ]}
+                    radius={10}
+                    pathOptions={{
+                      color: "#ffffff",
+                      weight: 3,
+                      fillColor: "#2583ff",
+                      fillOpacity: 1,
+                    }}
+                  >
+                    <Popup>
+                      <strong>Current Location / Driver</strong>
+                      <br />
+                      {selectedDriver.name} (Operator ID:{" "}
+                      {selectedDriver.operatorId})
+                      <br />
+                      {selectedLocation.locationName || "Latest GPS location"}
+                      <br />
+                      <small>
+                        {Number(selectedLocation.latitude).toFixed(6)},{" "}
+                        {Number(selectedLocation.longitude).toFixed(6)}
+                      </small>
+                    </Popup>
+                  </CircleMarker>
+
+                  {destination && (
+                    <CircleMarker
+                      center={[destination.latitude, destination.longitude]}
+                      radius={10}
+                      pathOptions={{
+                        color: "#ffffff",
+                        weight: 3,
+                        fillColor: "#ff8a24",
+                        fillOpacity: 1,
+                      }}
+                    >
+                      <Popup>
+                        <strong>Delivery Destination</strong>
+                        <br />
+                        {selectedShipment.receiverAddress || "Not available"}
+                      </Popup>
+                    </CircleMarker>
+                  )}
+                </MapContainer>
+              ) : (
+                <div
+                  role={loadError ? "alert" : "status"}
+                  style={{
+                    height: "100%",
+                    display: "grid",
+                    placeItems: "center",
+                    padding: "24px",
+                    textAlign: "center",
+                  }}
+                >
+                  {loading
+                    ? "Loading shipment tracking..."
+                    : loadError
+                      ? loadError
+                      : !selectedShipment
+                        ? "No active assigned shipment is available."
+                        : !hasSelectedLocation
+                          ? "Current driver GPS location is unavailable."
+                          : "Delivery destination coordinates are unavailable."}
+                </div>
+              )}
+
+              <div className="driver-map-info" style={{ zIndex: 1000 }}>
                 <div>
                   <span></span>
-                  {trackedLocations > 0
-                    ? "GPS Tracking Active"
-                    : "Location unavailable"}
+                  {loadError
+                    ? "Tracking API error"
+                    : loading
+                      ? "Refreshing shipment tracking"
+                      : gpsTrackingShipmentId != null &&
+                          String(gpsTrackingShipmentId) ===
+                            String(selectedShipment?.id) &&
+                          gpsStatus === "active"
+                        ? "GPS Active"
+                        : hasSelectedLocation
+                          ? "Latest backend GPS location"
+                        : "Current GPS unavailable"}
                 </div>
-
                 <strong>
-                  {trackedLocations} GPS Locations Available
+                  {selectedShipment?.trackingNumber ||
+                    (selectedShipment
+                      ? `Shipment #${selectedShipment.id}`
+                      : "No active shipment selected")}
                 </strong>
-
                 <small>
-                  {loadError || "Refreshes every 15 seconds"}
+                  {!destination
+                    ? "Delivery destination unavailable"
+                    : selectedRouteCoordinates.length > 1
+                    ? "Actual persisted delivery route"
+                    : "Route unavailable"}
                 </small>
-
+                <small>{loadError || "Refreshes every 15 seconds"}</small>
               </div>
-
+            </div>
+            <div
+              aria-label="Map legend"
+              style={{
+                display: "flex",
+                gap: "18px",
+                flexWrap: "wrap",
+                marginTop: "12px",
+                fontSize: "11px",
+              }}
+            >
+              <span>
+                <i
+                  style={{
+                    display: "inline-block",
+                    width: "9px",
+                    height: "9px",
+                    borderRadius: "50%",
+                    background: "#2583ff",
+                    marginRight: "6px",
+                  }}
+                ></i>
+                Current Driver Location
+              </span>
+              <span>
+                <i
+                  style={{
+                    display: "inline-block",
+                    width: "9px",
+                    height: "9px",
+                    borderRadius: "50%",
+                    background: "#ff8a24",
+                    marginRight: "6px",
+                  }}
+                ></i>
+                Delivery Destination
+              </span>
+              <span>
+                <i
+                  style={{
+                    display: "inline-block",
+                    width: "20px",
+                    height: "3px",
+                    verticalAlign: "middle",
+                    background: "#36dcb0",
+                    marginRight: "6px",
+                  }}
+                ></i>
+                Actual Delivery Route
+              </span>
             </div>
 
           </div>
@@ -838,10 +1675,10 @@ function DriverTracking() {
 
               <div>
 
-                <h2>Driver Status</h2>
+                <h2>Delivery Progress</h2>
 
                 <p>
-                  Current availability
+                  Shipment statuses from live shipment data
                 </p>
 
               </div>
@@ -851,13 +1688,16 @@ function DriverTracking() {
 
             <div className="driver-status-chart">
 
-              <div className="status-ring">
+              <div
+                className="status-ring"
+                style={{ background: statusRingBackground }}
+              >
 
                 <div>
 
-                  <strong>{totalDrivers}</strong>
+                  <strong>{shipments.length}</strong>
 
-                  <span>Drivers</span>
+                  <span>Shipments</span>
 
                 </div>
 
@@ -866,48 +1706,16 @@ function DriverTracking() {
 
               <div className="status-legend">
 
-                <div>
-
-                  <span className="legend-dot green-dot"></span>
-
-                  <label>On Road</label>
-
-                  <strong>{onRoadDrivers}</strong>
-
-                </div>
-
-
-                <div>
-
-                  <span className="legend-dot blue-dot"></span>
-
-                  <label>Available</label>
-
-                  <strong>0</strong>
-
-                </div>
-
-
-                <div>
-
-                  <span className="legend-dot orange-dot"></span>
-
-                  <label>Break</label>
-
-                  <strong>0</strong>
-
-                </div>
-
-
-                <div>
-
-                  <span className="legend-dot red-dot"></span>
-
-                  <label>Attention</label>
-
-                  <strong>{attentionDrivers}</strong>
-
-                </div>
+                {DELIVERY_STATUSES.map((status, index) => (
+                  <div key={status}>
+                    <span
+                      className="legend-dot"
+                      style={{ backgroundColor: STATUS_COLORS[index] }}
+                    ></span>
+                    <label>{getStatusLabel(status)}</label>
+                    <strong>{statusCounts[index]}</strong>
+                  </div>
+                ))}
 
               </div>
 
@@ -949,10 +1757,10 @@ function DriverTracking() {
 
             <div>
 
-              <h2>Active Drivers</h2>
+              <h2>Assigned Shipments</h2>
 
               <p>
-                Driver information from assigned shipments
+              Active delivery assignments first; other assignments are separated below
               </p>
 
             </div>
@@ -966,7 +1774,7 @@ function DriverTracking() {
 
                 <input
                   type="text"
-                  placeholder="Search driver or vehicle..."
+                  placeholder="Search driver or shipment..."
                   value={search}
                   onChange={(event) =>
                     setSearch(event.target.value)
@@ -975,9 +1783,7 @@ function DriverTracking() {
 
               </div>
 
-              <button className="driver-filter">
-                All Drivers
-              </button>
+              <button className="driver-filter">All Drivers</button>
 
             </div>
 
@@ -992,14 +1798,12 @@ function DriverTracking() {
 
                 <tr>
 
-                  <th>DRIVER</th>
-                  <th>VEHICLE</th>
+                  <th>DRIVER / OPERATOR</th>
                   <th>SHIPMENT</th>
                   <th>CURRENT LOCATION</th>
                   <th>SPEED</th>
                   <th>ETA</th>
                   <th>STATUS</th>
-                  <th>ACTION</th>
 
                 </tr>
 
@@ -1012,7 +1816,7 @@ function DriverTracking() {
 
                   <tr>
 
-                    <td colSpan="8">
+                    <td colSpan="6">
 
                       <div
                         style={{
@@ -1027,11 +1831,11 @@ function DriverTracking() {
 
                   </tr>
 
-                ) : filteredDrivers.length === 0 ? (
+                ) : orderedFilteredDrivers.length === 0 ? (
 
                   <tr>
 
-                    <td colSpan="8">
+                    <td colSpan="6">
 
                       <div
                         style={{
@@ -1039,7 +1843,7 @@ function DriverTracking() {
                           textAlign: "center",
                         }}
                       >
-                        No drivers found.
+                        No assigned shipments found.
                       </div>
 
                     </td>
@@ -1048,17 +1852,43 @@ function DriverTracking() {
 
                 ) : (
 
-                  filteredDrivers.map((driver) => {
+                  orderedFilteredDrivers.map((driver, index) => {
 
                     const shipment = driver.shipment;
                     const location = driver.location;
-
-                    const status =
-                      shipment?.status || "UNKNOWN";
+                    const status = shipment?.status;
+                    const etaValue = driver.eta?.expectedCompletionTime;
+                    const etaDate = etaValue ? new Date(etaValue) : null;
+                    const etaLabel =
+                      driver.eta?.requestFailed
+                        ? "ETA could not be loaded"
+                        : driver.eta?.shipmentId != null &&
+                            Number(driver.eta.shipmentId) === Number(shipment.id) &&
+                            etaDate &&
+                            Number.isFinite(etaDate.getTime())
+                          ? etaDate.toLocaleString()
+                          : "Not available";
+                    const active = isActiveShipment(shipment);
+                    const previousActive =
+                      index > 0 &&
+                      isActiveShipment(
+                        orderedFilteredDrivers[index - 1].shipment
+                      );
 
                     return (
-
-                      <tr key={driver.id}>
+                      <Fragment key={driver.id}>
+                        {index === 0 || previousActive !== active ? (
+                          <tr>
+                            <td colSpan="6">
+                              <strong>
+                                {active
+                                  ? `Active delivery shipments (${activeFilteredDrivers.length})`
+                                  : `Other assigned shipments (${otherFilteredDrivers.length})`}
+                              </strong>
+                            </td>
+                          </tr>
+                        ) : null}
+                        <tr>
 
                         {/* Driver */}
 
@@ -1076,24 +1906,11 @@ function DriverTracking() {
                                 {driver.name}
                               </strong>
 
-                              <span>
-                                Operator ID: {driver.id}
-                              </span>
+                              <span>Operator ID: {driver.operatorId}</span>
 
                             </div>
 
                           </div>
-
-                        </td>
-
-
-                        {/* Vehicle */}
-
-                        <td>
-
-                          <span className="vehicle-number">
-                            Not provided
-                          </span>
 
                         </td>
 
@@ -1118,11 +1935,14 @@ function DriverTracking() {
 
                             <MapPin size={14} />
 
-                            {location?.locationName ||
-                              (location?.latitude != null &&
-                              location?.longitude != null
-                                ? `${location.latitude}, ${location.longitude}`
-                                : "Location unavailable")}
+                            {isValidLocationRecord(
+                              location,
+                              shipment.assignedOperatorId
+                            )
+                              ? `${Number(location.latitude).toFixed(6)}, ${Number(
+                                  location.longitude
+                                ).toFixed(6)}`
+                              : "Location unavailable"}
 
                           </div>
 
@@ -1154,7 +1974,7 @@ function DriverTracking() {
 
                             <Clock3 size={14} />
 
-                            Not available
+                            {etaLabel}
 
                           </div>
 
@@ -1172,29 +1992,15 @@ function DriverTracking() {
                           >
 
                             <i></i>
-
-                            {getStatusLabel(status)}
+                            {status ? getStatusLabel(status) : "Not available"}
 
                           </span>
 
                         </td>
 
 
-                        {/* Action */}
-
-                        <td>
-
-                          <button
-                            className="call-driver"
-                            title="Driver action"
-                          >
-                            <Phone size={14} />
-                          </button>
-
-                        </td>
-
-                      </tr>
-
+                        </tr>
+                      </Fragment>
                     );
                   })
 
@@ -1215,7 +2021,7 @@ function DriverTracking() {
               <strong>{filteredDrivers.length}</strong>{" "}
               of{" "}
               <strong>{drivers.length}</strong>{" "}
-              drivers currently assigned
+              assigned shipments
 
             </span>
 
@@ -1230,31 +2036,10 @@ function DriverTracking() {
 
         {/* Bottom cards */}
 
-        <section className="driver-bottom-grid">
-
-          <div className="driver-bottom-card">
-
-            <div className="bottom-driver-icon">
-
-              <CheckCircle2 size={21} />
-
-            </div>
-
-            <div>
-
-              <span>Driver Safety Score</span>
-
-              <strong>Data unavailable</strong>
-
-              <p>
-                No safety score in backend
-              </p>
-
-            </div>
-
-          </div>
-
-
+        <section
+          className="driver-bottom-grid"
+          style={{ gridTemplateColumns: "minmax(0, 1fr)" }}
+        >
           <div className="driver-bottom-card">
 
             <div className="bottom-driver-icon purple-icon">
@@ -1276,30 +2061,6 @@ function DriverTracking() {
             </div>
 
           </div>
-
-
-          <div className="driver-bottom-card">
-
-            <div className="bottom-driver-icon green-icon">
-
-              <Clock3 size={21} />
-
-            </div>
-
-            <div>
-
-              <span>Avg Driving Time</span>
-
-              <strong>Data unavailable</strong>
-
-              <p>
-                No driving-time data in backend
-              </p>
-
-            </div>
-
-          </div>
-
         </section>
 
       </main>

@@ -115,8 +115,53 @@ export default function LogisticsOverview() {
   const [user, setUser] = useState(null);
   const [shipments, setShipments] = useState([]);
   const [routes, setRoutes] = useState({});
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAnalytics() {
+      if (fromDate && toDate && fromDate > toDate) {
+        setAnalytics(null);
+        setAnalyticsError("The start date must be on or before the end date.");
+        setAnalyticsLoading(false);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (fromDate) params.set("from", fromDate);
+      if (toDate) params.set("to", toDate);
+
+      try {
+        setAnalyticsLoading(true);
+        setAnalyticsError("");
+        const query = params.toString();
+        const response = await apiRequest(
+          `/api/analytics${query ? `?${query}` : ""}`
+        );
+        if (active) setAnalytics(response);
+      } catch (requestError) {
+        if (active) {
+          console.error("Unable to load shipment analytics:", requestError);
+          setAnalytics(null);
+          setAnalyticsError(requestError.message || "Unable to load shipment analytics.");
+        }
+      } finally {
+        if (active) setAnalyticsLoading(false);
+      }
+    }
+
+    loadAnalytics();
+    return () => {
+      active = false;
+    };
+  }, [fromDate, toDate]);
 
   useEffect(() => {
     let mounted = true;
@@ -194,23 +239,7 @@ export default function LogisticsOverview() {
 
   const userName = getUserName(user);
 
-  const totalShipments = shipments.length;
-
-  const deliveredShipments = useMemo(
-    () =>
-      shipments.filter(
-        (shipment) => getStatus(shipment) === "DELIVERED"
-      ),
-    [shipments]
-  );
-
-  const failedDeliveries = useMemo(
-    () =>
-      shipments.filter((shipment) =>
-        getStatus(shipment) === "FAILED_DELIVERY"
-      ),
-    [shipments]
-  );
+  const totalShipments = analytics?.totalShipments ?? 0;
 
   /*
    * These values are derived only from the current shipment data.
@@ -252,12 +281,12 @@ export default function LogisticsOverview() {
   }, [activeRoutes]);
 
   const statusCounts = [
-    { label: "Created", value: shipments.filter((shipment) => getStatus(shipment) === "CREATED").length },
-    { label: "Picked Up", value: shipments.filter((shipment) => getStatus(shipment) === "PICKED_UP").length },
-    { label: "In Transit", value: shipments.filter((shipment) => getStatus(shipment) === "IN_TRANSIT" || getStatus(shipment) === "OUT_FOR_DELIVERY").length },
-    { label: "Delivered", value: deliveredShipments.length },
-    { label: "Failed Delivery", value: failedDeliveries.length },
-    { label: "Cancelled", value: shipments.filter((shipment) => getStatus(shipment) === "CANCELLED").length },
+    { label: "Created", value: analytics?.createdShipments ?? 0 },
+    { label: "Picked Up", value: analytics?.pickedUpShipments ?? 0 },
+    { label: "In Transit", value: analytics?.inTransitShipments ?? 0 },
+    { label: "Delivered", value: analytics?.deliveredShipments ?? 0 },
+    { label: "Delayed / Failed", value: analytics?.delayedShipments ?? 0 },
+    { label: "Cancelled", value: analytics?.cancelledShipments ?? 0 },
   ];
 
   return (
@@ -343,6 +372,11 @@ export default function LogisticsOverview() {
             {error}
           </div>
         )}
+        {analyticsError && (
+          <div role="alert">
+            {analyticsError}
+          </div>
+        )}
 
         {/* SUMMARY */}
         {!error && (
@@ -354,7 +388,7 @@ export default function LogisticsOverview() {
             </div>
 
             <h2>
-              {loading ? "..." : totalShipments}
+              {loading || analyticsLoading ? "..." : totalShipments}
             </h2>
 
             <div className="stat-change">
@@ -383,7 +417,7 @@ export default function LogisticsOverview() {
               <div className="stat-icon">✓</div>
             </div>
 
-            <h2>{loading ? "..." : deliveredShipments.length}</h2>
+            <h2>{loading || analyticsLoading ? "..." : analytics?.deliveredShipments ?? 0}</h2>
 
             <div className="stat-caption">
               Current delivered status
@@ -396,7 +430,7 @@ export default function LogisticsOverview() {
               <div className="stat-icon">!</div>
             </div>
 
-            <h2>{loading ? "..." : failedDeliveries.length}</h2>
+            <h2>{loading || analyticsLoading ? "..." : analytics?.delayedShipments ?? 0}</h2>
 
             <div className="stat-caption">
               Current failed delivery status
@@ -412,14 +446,38 @@ export default function LogisticsOverview() {
             <div className="card-header">
               <div>
                 <h3>Shipment Status</h3>
-                <p>Current status counts from your shipments</p>
+                <p>
+                  {fromDate || toDate
+                    ? "Shipment creation dates in the selected range"
+                    : "Current status counts from your shipments"}
+                </p>
+              </div>
+              <div>
+                <label>
+                  From{" "}
+                  <input
+                    type="date"
+                    value={fromDate}
+                    max={toDate || undefined}
+                    onChange={(event) => setFromDate(event.target.value)}
+                  />
+                </label>{" "}
+                <label>
+                  To{" "}
+                  <input
+                    type="date"
+                    value={toDate}
+                    min={fromDate || undefined}
+                    onChange={(event) => setToDate(event.target.value)}
+                  />
+                </label>
               </div>
             </div>
             <div className="status-legend">
               {statusCounts.map((status) => (
                 <div className="legend-item" key={status.label}>
                   <div>
-                    <strong>{loading ? "..." : status.value}</strong>
+                    <strong>{analyticsLoading ? "..." : status.value}</strong>
                     <span>{status.label}</span>
                   </div>
                 </div>
